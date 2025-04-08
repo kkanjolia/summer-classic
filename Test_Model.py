@@ -157,33 +157,31 @@ summary_df = st.session_state.bets.groupby(["Betting On", "Bet Type"])["Bet Amou
 st.dataframe(summary_df)
 
 # Calculate and Display Individual Payouts
+# Define fractions (make sure they sum to 1 for win bets, and to 1 for place bets)
+WIN_FRACTION = 1/3          # Portion allocated to Win pool
+PLACE_FRACTION_FOR_WIN = 1/3  # Portion allocated to Place pool for Win bets
+SHOW_FRACTION_FOR_WIN = 1/3   # Portion allocated to Show pool for Win bets
+
+PLACE_FRACTION = 1/2        # Portion for Place bets: 50% to Place pool, 50% to Show pool
+SHOW_FRACTION_FOR_PLACE = 1/2
+
+# Then, your calculate_payout function becomes:
 def calculate_payout(row):
-    """
-    Calculates the payout for each bet based on:
-      - If a bet is on the winning horse:
-            * A "Win" bet gets paid from the win, place, and show pools.
-            * A "Place" bet gets paid from the place and show pools.
-            * A "Show" bet gets paid from the show pool.
-      - Otherwise, no payout.
-    """
     payout = 0
-    # Only proceed if a finishing order has been set (i.e. winner is not None)
     if winner is not None:
-        # Check if the bet's chosen horse is the winner.
         if row["Betting On"] == winner:
             if row["Bet Type"] == "Win":
-                # Win bet gets the combined payout of all three pools.
-                payout = row["Bet Amount"] * (win_ratio + place_ratio + show_ratio)
+                payout = (row["Bet Amount"] * WIN_FRACTION * win_ratio +
+                          row["Bet Amount"] * PLACE_FRACTION_FOR_WIN * place_ratio +
+                          row["Bet Amount"] * SHOW_FRACTION_FOR_WIN * show_ratio)
             elif row["Bet Type"] == "Place":
-                # Place bet gets the combined payout of place and show pools.
-                payout = row["Bet Amount"] * (place_ratio + show_ratio)
+                payout = (row["Bet Amount"] * PLACE_FRACTION * place_ratio +
+                          row["Bet Amount"] * SHOW_FRACTION_FOR_PLACE * show_ratio)
             elif row["Bet Type"] == "Show":
-                # Show bet gets the payout from the show pool.
                 payout = row["Bet Amount"] * show_ratio
-        # If you also want to allow Place bets on horses that finish second to be eligible:
         elif row["Bet Type"] == "Place" and row["Betting On"] == second:
-            payout = row["Bet Amount"] * (place_ratio + show_ratio)
-        # And similarly if you want Show bets on third-place horses to be eligible:
+            payout = (row["Bet Amount"] * PLACE_FRACTION * place_ratio +
+                      row["Bet Amount"] * SHOW_FRACTION_FOR_PLACE * show_ratio)
         elif row["Bet Type"] == "Show" and row["Betting On"] == third:
             payout = row["Bet Amount"] * show_ratio
     return payout
