@@ -42,8 +42,8 @@ st.title("2025 Summer Classic")
 # Public Bet Form
 def bet_form():
     with st.form("bet_form", clear_on_submit=True):
-        Bettor_Name = st.selectbox("Bettor Name", ["Anthony Sousa", "Connor Donovan", "Chris Brown", "Jared Joaquin", "Jim Alexander", "Joe Canavan", "Mark Leonard", "Pete Koskores", "Pete Sullivan", "Ryan Barry"])
-        Who_You_Bet_On = st.selectbox("Betting On", ["Anthony Sousa", "Connor Donovan", "Chris Brown", "Jared Joaquin", "Jim Alexander", "Joe Canavan", "Mark Leonard", "Pete Koskores", "Pete Sullivan", "Ryan Barry"])
+        Bettor_Name = st.selectbox("Bettor Name", ["Anthony Sousa", "Connor Donovan", "Chris Brown", "Jared Joaquin", "Jim Alexander", "Joe Canavan", "Mark Leonard", "Pete Koskores", "Pete Sullivan", "Ryan Barcome"])
+        Who_You_Bet_On = st.selectbox("Betting On", ["Anthony Sousa", "Connor Donovan", "Chris Brown", "Jared Joaquin", "Jim Alexander", "Joe Canavan", "Mark Leonard", "Pete Koskores", "Pete Sullivan", "Ryan Barcome"])
         bet_type = st.selectbox("Bet Type", ["Win", "Place", "Show"])
         bet_amount = st.number_input("**Bet Amount:** $", min_value=0, step=1)
         submitted = st.form_submit_button("Submit Bet")
@@ -113,9 +113,9 @@ st.dataframe(summary)
 # Finishing Order Section (Admin Only)
 if st.session_state.admin_logged_in:
     st.header("Enter Finishing Order (Admin Only)")
-    winner = st.selectbox("Winner (1st)", ["Anthony Sousa", "Connor Donovan", "Chris Brown", "Jared Joaquin", "Jim Alexander", "Joe Canavan", "Mark Leonard", "Pete Koskores", "Pete Sullivan", "Ryan Barry"])
-    second = st.selectbox("2nd Place", ["Anthony Sousa", "Connor Donovan", "Chris Brown", "Jared Joaquin", "Jim Alexander", "Joe Canavan", "Mark Leonard", "Pete Koskores", "Pete Sullivan", "Ryan Barry"])
-    third = st.selectbox("3rd Place", ["Anthony Sousa", "Connor Donovan", "Chris Brown", "Jared Joaquin", "Jim Alexander", "Joe Canavan", "Mark Leonard", "Pete Koskores", "Pete Sullivan", "Ryan Barry"])
+    winner = st.selectbox("Winner (1st)", ["Anthony Sousa", "Connor Donovan", "Chris Brown", "Jared Joaquin", "Jim Alexander", "Joe Canavan", "Mark Leonard", "Pete Koskores", "Pete Sullivan", "Ryan Barcome"])
+    second = st.selectbox("2nd Place", ["Anthony Sousa", "Connor Donovan", "Chris Brown", "Jared Joaquin", "Jim Alexander", "Joe Canavan", "Mark Leonard", "Pete Koskores", "Pete Sullivan", "Ryan Barcome"])
+    third = st.selectbox("3rd Place", ["Anthony Sousa", "Connor Donovan", "Chris Brown", "Jared Joaquin", "Jim Alexander", "Joe Canavan", "Mark Leonard", "Pete Koskores", "Pete Sullivan", "Ryan Barcome"])
 else:
     st.info("Finishing order can only be adjusted by the admin.")
     winner = second = third = None
