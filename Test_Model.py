@@ -11,15 +11,17 @@ def load_bets():
     else:
         return pd.DataFrame(columns=["Bettor Name", "Betting On", "Bet Type", "Bet Amount"])
 
+# Load or initialize bets in session_state
 st.session_state.bets = load_bets()
 
 # --- Helper Functions for Each-Way Processing ---
+
 def effective_contribution(bet_type, amount, category):
     """
     Returns the effective contribution of a bet to a given pool category.
-    For Win bets, the contribution is amount/3 to each pool.
-    For Place bets, the contribution is amount/2 to the Place and Show pools.
-    For Show bets, the entire amount contributes only to the Show pool.
+    - For Win bets: split equally among Win, Place, and Show (amount/3 each).
+    - For Place bets: split equally between Place and Show (amount/2 each).
+    - For Show bets: full amount goes to Show pool.
     """
     if bet_type == "Win":
         return amount / 3
@@ -36,8 +38,15 @@ def total_effective_pool(category):
         total += effective_contribution(row["Bet Type"], row["Bet Amount"], category)
     return total
 
+def effective_eligible_sum(bet_type, outcome, category):
+    total = 0
+    for _, row in st.session_state.bets.iterrows():
+        if row["Betting On"] == outcome and row["Bet Type"] == bet_type:
+            total += effective_contribution(row["Bet Type"], row["Bet Amount"], category)
+    return total
+
 # ========= Admin Login Section in the Sidebar =========
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "default_password")  # Use env var for admin password
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "default_password")  # Set via env var
 
 def admin_login():
     with st.sidebar:
@@ -74,7 +83,6 @@ def bet_form():
         bet_type = st.selectbox("Bet Type", ["Win", "Place", "Show"])
         bet_amount = st.number_input("**Bet Amount:** $", min_value=0, step=1)
         submitted = st.form_submit_button("Submit Bet")
-
         if submitted:
             new_bet = pd.DataFrame([[Bettor_Name, Who_You_Bet_On, bet_type, bet_amount]],
                                    columns=["Bettor Name", "Betting On", "Bet Type", "Bet Amount"])
@@ -120,7 +128,6 @@ This table summarizes the bets by Outcome and Bet Type.
 It shows the total bet amount per outcome in each category and the hypothetical payout ratio 
 (calculated as Total Pool for the category divided by the total bets on that outcome).
 """)
-
 def create_summary():
     summary = st.session_state.bets.pivot_table(
         index="Betting On", 
@@ -166,14 +173,7 @@ else:
     else:
         winner = second = third = None
 
-# ========= Eligible Effective Sums for Payout Ratio Calculation =========
-def effective_eligible_sum(bet_type, outcome, category):
-    total = 0
-    for _, row in st.session_state.bets.iterrows():
-        if row["Betting On"] == outcome and row["Bet Type"] == bet_type:
-            total += effective_contribution(row["Bet Type"], row["Bet Amount"], category)
-    return total
-
+# ========= Compute Eligible Effective Sums for Payout Ratio Calculation =========
 eligible_win_eff = effective_eligible_sum("Win", winner, "Win")
 eligible_place_eff = (effective_eligible_sum("Place", winner, "Place") +
                       effective_eligible_sum("Place", second, "Place"))
@@ -196,7 +196,6 @@ summary_df = st.session_state.bets.groupby(["Betting On", "Bet Type"])["Bet Amou
 st.dataframe(summary_df)
 
 # ========= Each-Way Payout Calculation =========
-# Define fractions for splitting
 WIN_FRACTION = 1/3          # For Win bets: 1/3 to win, 1/3 to place, 1/3 to show
 PLACE_FRACTION = 1/2        # For Place bets: 1/2 to place, 1/2 to show
 
@@ -205,23 +204,33 @@ def calculate_payout(row):
     if winner is not None:
         if row["Betting On"] == winner:
             if row["Bet Type"] == "Win":
-                payout = (row["Bet Amount"] / 3) * win_ratio
-                payout += (row["Bet Amount"] / 3) * place_ratio
-                payout += (row["Bet Amount"] / 3) * show_ratio
+                win_eff = row["Bet Amount"] * WIN_FRACTION
+                place_eff = row["Bet Amount"] * WIN_FRACTION
+                show_eff = row["Bet Amount"] * WIN_FRACTION
+                payout = (win_eff / eligible_win_eff * total_win_eff) + \
+                         (place_eff / eligible_place_eff * total_place_eff) + \
+                         (show_eff / eligible_show_eff * total_show_eff)
             elif row["Bet Type"] == "Place":
-                payout = (row["Bet Amount"] / 2) * place_ratio
-                payout += (row["Bet Amount"] / 2) * show_ratio
+                if row["Betting On"] in [winner, second]:
+                    place_eff = row["Bet Amount"] * PLACE_FRACTION
+                    show_eff = row["Bet Amount"] * PLACE_FRACTION
+                    payout = (place_eff / eligible_place_eff * total_place_eff) + \
+                             (show_eff / eligible_show_eff * total_show_eff)
             elif row["Bet Type"] == "Show":
-                payout = row["Bet Amount"] * show_ratio
+                if row["Betting On"] in [winner, second, third]:
+                    payout = row["Bet Amount"] / eligible_show_eff * total_show_eff
         elif row["Bet Type"] == "Place" and row["Betting On"] == second:
-            payout = (row["Bet Amount"] / 2) * place_ratio + (row["Bet Amount"] / 2) * show_ratio
+            place_eff = row["Bet Amount"] * PLACE_FRACTION
+            show_eff = row["Bet Amount"] * PLACE_FRACTION
+            payout = (place_eff / eligible_place_eff * total_place_eff) + \
+                     (show_eff / eligible_show_eff * total_show_eff)
         elif row["Bet Type"] == "Show" and row["Betting On"] == third:
-            payout = row["Bet Amount"] * show_ratio
+            payout = row["Bet Amount"] / eligible_show_eff * total_show_eff
     return payout
 
 bets_df = st.session_state.bets.copy()
 bets_df["Payout"] = bets_df.apply(calculate_payout, axis=1)
 
 st.header("Individual Payouts")
-st.markdown("Final Payouts once tournament is over (Payout null until tournament is over)")
+st.markdown("Final Payouts once tournament is over")
 st.dataframe(bets_df[["Bettor Name", "Betting On", "Bet Type", "Bet Amount", "Payout"]])
