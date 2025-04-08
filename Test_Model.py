@@ -110,15 +110,28 @@ def create_summary():
 summary = create_summary()
 st.dataframe(summary)
 
-# Finishing Order Section (Admin Only)
+# Finishing Order Section (Admin Only - but values are stored for everyone)
+options = ["Anthony Sousa", "Connor Donovan", "Chris Brown", "Jared Joaquin", "Jim Alexander", 
+           "Joe Canavan", "Mark Leonard", "Pete Koskores", "Pete Sullivan", "Ryan Barcome", 
+           "Kunal Kanjolia", "Mike Leonard"]
+
 if st.session_state.admin_logged_in:
     st.header("Enter Finishing Order (Admin Only)")
-    winner = st.selectbox("Winner (1st)", ["Anthony Sousa", "Connor Donovan", "Chris Brown", "Jared Joaquin", "Jim Alexander", "Joe Canavan", "Mark Leonard", "Pete Koskores", "Pete Sullivan", "Kunal Kanjolia", "Mike Leonard", "Ryan Barcome"])
-    second = st.selectbox("2nd Place", ["Anthony Sousa", "Connor Donovan", "Chris Brown", "Jared Joaquin", "Jim Alexander", "Joe Canavan", "Mark Leonard", "Pete Koskores", "Pete Sullivan", "Kunal Kanjolia", "Mike Leonard", "Ryan Barcome"])
-    third = st.selectbox("3rd Place", ["Anthony Sousa", "Connor Donovan", "Chris Brown", "Jared Joaquin", "Jim Alexander", "Joe Canavan", "Mark Leonard", "Pete Koskores", "Pete Sullivan", "Kunal Kanjolia", "Mike Leonard", "Ryan Barcome"])
+    winner = st.selectbox("Winner (1st)", options, key="winner")
+    second = st.selectbox("2nd Place", options, key="second")
+    third = st.selectbox("3rd Place", options, key="third")
+    # Save finishing order to session state so everyone can see the payouts
+    st.session_state.finishing_order = {"winner": winner, "second": second, "third": third}
 else:
     st.info("Finishing order can only be adjusted by the admin.")
-    winner = second = third = None
+    # Use finishing order stored in session state, if available
+    if "finishing_order" in st.session_state:
+        order = st.session_state.finishing_order
+        winner = order["winner"]
+        second = order["second"]
+        third = order["third"]
+    else:
+        winner = second = third = None
 
 # Calculate Eligible Bets & Payout Ratios
 def eligible_sum(bet_type, eligible_outcomes):
