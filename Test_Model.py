@@ -1,9 +1,14 @@
 import streamlit as st
 import pandas as pd
+import os
 
-# Initialize session state for bets if not already set.
-if "bets" not in st.session_state:
+# ======= Persistence Setup: Load bets from file =======
+BETS_FILE = "bets_data.csv"
+if os.path.exists(BETS_FILE):
+    st.session_state.bets = pd.read_csv(BETS_FILE)
+else:
     st.session_state.bets = pd.DataFrame(columns=["Bettor Name", "Betting On", "Bet Type", "Bet Amount"])
+
 
 # 1. Admin Login Section in the Sidebar
 ADMIN_PASSWORD = "Southboston15!"  # Replace with your admin password
@@ -41,6 +46,7 @@ with st.form("bet_form", clear_on_submit=True):
         new_bet = pd.DataFrame([[Bettor_Name, Who_You_Bet_On, bet_type, bet_amount]],
                                 columns=["Bettor Name", "Betting On", "Bet Type", "Bet Amount"])
         st.session_state.bets = pd.concat([st.session_state.bets, new_bet], ignore_index=True)
+        st.session_state.bets.to_csv(BETS_FILE, index=False)
 
 st.header("Current Bets")
 st.markdown("Below are all the bets placed so far.")
