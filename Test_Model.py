@@ -13,8 +13,31 @@ def load_bets():
 
 st.session_state.bets = load_bets()
 
-# Admin Login Section in the Sidebar
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "default_password")  # Use environment variable for admin password
+# --- Helper Functions for Each-Way Processing ---
+def effective_contribution(bet_type, amount, category):
+    """
+    Returns the effective contribution of a bet to a given pool category.
+    For Win bets, the contribution is amount/3 to each pool.
+    For Place bets, the contribution is amount/2 to the Place and Show pools.
+    For Show bets, the entire amount contributes only to the Show pool.
+    """
+    if bet_type == "Win":
+        return amount / 3
+    elif bet_type == "Place":
+        return amount / 2 if category in ["Place", "Show"] else 0
+    elif bet_type == "Show":
+        return amount if category == "Show" else 0
+    else:
+        return 0
+
+def total_effective_pool(category):
+    total = 0
+    for _, row in st.session_state.bets.iterrows():
+        total += effective_contribution(row["Bet Type"], row["Bet Amount"], category)
+    return total
+
+# ========= Admin Login Section in the Sidebar =========
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "default_password")  # Use env var for admin password
 
 def admin_login():
     with st.sidebar:
@@ -39,11 +62,15 @@ if st.session_state.admin_logged_in:
 
 st.title("2025 Summer Classic")
 
-# Public Bet Form
+# ========= Public Bet Form =========
 def bet_form():
     with st.form("bet_form", clear_on_submit=True):
-        Bettor_Name = st.selectbox("Bettor Name", ["Anthony Sousa", "Connor Donovan", "Chris Brown", "Jared Joaquin", "Jim Alexander", "Joe Canavan", "Mark Leonard", "Pete Koskores", "Pete Sullivan", "Kunal Kanjolia", "Mike Leonard", "Ryan Barcome"])
-        Who_You_Bet_On = st.selectbox("Betting On", ["Anthony Sousa", "Connor Donovan", "Chris Brown", "Jared Joaquin", "Jim Alexander", "Joe Canavan", "Mark Leonard", "Pete Koskores", "Pete Sullivan", "Kunal Kanjolia", "Mike Leonard", "Ryan Barcome"])
+        Bettor_Name = st.selectbox("Bettor Name", ["Anthony Sousa", "Connor Donovan", "Chris Brown", "Jared Joaquin", 
+                                                  "Jim Alexander", "Joe Canavan", "Mark Leonard", "Pete Koskores", 
+                                                  "Pete Sullivan", "Kunal Kanjolia", "Mike Leonard", "Ryan Barcome"])
+        Who_You_Bet_On = st.selectbox("Betting On", ["Anthony Sousa", "Connor Donovan", "Chris Brown", "Jared Joaquin", 
+                                                    "Jim Alexander", "Joe Canavan", "Mark Leonard", "Pete Koskores", 
+                                                    "Pete Sullivan", "Kunal Kanjolia", "Mike Leonard", "Ryan Barcome"])
         bet_type = st.selectbox("Bet Type", ["Win", "Place", "Show"])
         bet_amount = st.number_input("**Bet Amount:** $", min_value=0, step=1)
         submitted = st.form_submit_button("Submit Bet")
@@ -60,7 +87,7 @@ st.header("Current Bets")
 st.markdown("Below are all the bets placed so far.")
 st.dataframe(st.session_state.bets[["Bettor Name", "Betting On", "Bet Type", "Bet Amount"]])
 
-# Display total pool size
+# ========= Raw Total Pools =========
 def calculate_pools():
     total_pool = st.session_state.bets["Bet Amount"].sum()
     total_win = st.session_state.bets.loc[st.session_state.bets["Bet Type"] == "Win", "Bet Amount"].sum()
@@ -77,7 +104,16 @@ st.write("**Win Pool:** $", total_win)
 st.write("**Place Pool:** $", total_place)
 st.write("**Show Pool:** $", total_show)
 
-# Hypothetical Payout Ratios Section
+# ========= Effective Pool Totals (Each-Way Splitting) =========
+total_win_eff = total_effective_pool("Win")
+total_place_eff = total_effective_pool("Place")
+total_show_eff = total_effective_pool("Show")
+
+st.write("**Effective Win Pool:** $", total_win_eff)
+st.write("**Effective Place Pool:** $", total_place_eff)
+st.write("**Effective Show Pool:** $", total_show_eff)
+
+# ========= Hypothetical Payout Ratios Section (Using Raw Totals) =========
 st.header("Bet Summary and Hypothetical Payout Ratios")
 st.markdown("""
 This table summarizes the bets by Outcome and Bet Type.
@@ -85,7 +121,6 @@ It shows the total bet amount per outcome in each category and the hypothetical 
 (calculated as Total Pool for the category divided by the total bets on that outcome).
 """)
 
-# Create a pivot table that aggregates total bets by Outcome and Bet Type
 def create_summary():
     summary = st.session_state.bets.pivot_table(
         index="Betting On", 
@@ -110,7 +145,7 @@ def create_summary():
 summary = create_summary()
 st.dataframe(summary)
 
-# Finishing Order Section (Admin Only - but values are stored for everyone)
+# ========= Finishing Order Section (Admin Only, but stored for everyone) =========
 options = ["Anthony Sousa", "Connor Donovan", "Chris Brown", "Jared Joaquin", "Jim Alexander", 
            "Joe Canavan", "Mark Leonard", "Pete Koskores", "Pete Sullivan", "Ryan Barcome", 
            "Kunal Kanjolia", "Mike Leonard"]
@@ -120,11 +155,9 @@ if st.session_state.admin_logged_in:
     winner = st.selectbox("Winner (1st)", options, key="winner")
     second = st.selectbox("2nd Place", options, key="second")
     third = st.selectbox("3rd Place", options, key="third")
-    # Save finishing order to session state so everyone can see the payouts
     st.session_state.finishing_order = {"winner": winner, "second": second, "third": third}
 else:
     st.info("Finishing order can only be adjusted by the admin.")
-    # Use finishing order stored in session state, if available
     if "finishing_order" in st.session_state:
         order = st.session_state.finishing_order
         winner = order["winner"]
@@ -133,55 +166,55 @@ else:
     else:
         winner = second = third = None
 
-# Calculate Eligible Bets & Payout Ratios
-def eligible_sum(bet_type, eligible_outcomes):
-    df = st.session_state.bets
-    return df.loc[(df["Bet Type"] == bet_type) & (df["Betting On"].isin(eligible_outcomes)), "Bet Amount"].sum()
+# ========= Eligible Effective Sums for Payout Ratio Calculation =========
+def effective_eligible_sum(bet_type, outcome, category):
+    total = 0
+    for _, row in st.session_state.bets.iterrows():
+        if row["Betting On"] == outcome and row["Bet Type"] == bet_type:
+            total += effective_contribution(row["Bet Type"], row["Bet Amount"], category)
+    return total
 
-eligible_win = [winner]
-eligible_place = [winner, second]
-eligible_show = [winner, second, third]
+eligible_win_eff = effective_eligible_sum("Win", winner, "Win")
+eligible_place_eff = (effective_eligible_sum("Place", winner, "Place") +
+                      effective_eligible_sum("Place", second, "Place"))
+eligible_show_eff = (effective_eligible_sum("Show", winner, "Show") +
+                     effective_eligible_sum("Show", second, "Show") +
+                     effective_eligible_sum("Show", third, "Show"))
 
-eligible_win_total = eligible_sum("Win", eligible_win)
-eligible_place_total = eligible_sum("Place", eligible_place)
-eligible_show_total = eligible_sum("Show", eligible_show)
+# ========= Compute Payout Ratios Based on Effective Values =========
+win_ratio = total_win_eff / eligible_win_eff if eligible_win_eff > 0 else 0
+place_ratio = total_place_eff / eligible_place_eff if eligible_place_eff > 0 else 0
+show_ratio = total_show_eff / eligible_show_eff if eligible_show_eff > 0 else 0
 
-win_ratio = total_win / eligible_win_total if eligible_win_total > 0 else 0
-place_ratio = total_place / eligible_place_total if eligible_place_total > 0 else 0
-show_ratio = total_show / eligible_show_total if eligible_show_total > 0 else 0
+st.write("**Win Payout Ratio:**", win_ratio)
+st.write("**Place Payout Ratio:**", place_ratio)
+st.write("**Show Payout Ratio:**", show_ratio)
 
+# ========= Raw Bet Summary =========
 st.header("Bet Summary")
-
-# Group bets by Outcome and Bet Type and calculate the total bet amount for each group.
 summary_df = st.session_state.bets.groupby(["Betting On", "Bet Type"])["Bet Amount"].sum().reset_index()
 st.dataframe(summary_df)
 
-# Calculate and Display Individual Payouts
-# Define fractions (make sure they sum to 1 for win bets, and to 1 for place bets)
-WIN_FRACTION = 1/3          # Portion allocated to Win pool
-PLACE_FRACTION_FOR_WIN = 1/3  # Portion allocated to Place pool for Win bets
-SHOW_FRACTION_FOR_WIN = 1/3   # Portion allocated to Show pool for Win bets
+# ========= Each-Way Payout Calculation =========
+# Define fractions for splitting
+WIN_FRACTION = 1/3          # For Win bets: 1/3 to win, 1/3 to place, 1/3 to show
+PLACE_FRACTION = 1/2        # For Place bets: 1/2 to place, 1/2 to show
 
-PLACE_FRACTION = 1/2        # Portion for Place bets: 50% to Place pool, 50% to Show pool
-SHOW_FRACTION_FOR_PLACE = 1/2
-
-# Then, your calculate_payout function becomes:
 def calculate_payout(row):
     payout = 0
     if winner is not None:
         if row["Betting On"] == winner:
             if row["Bet Type"] == "Win":
-                payout = (row["Bet Amount"] * WIN_FRACTION * win_ratio +
-                          row["Bet Amount"] * PLACE_FRACTION_FOR_WIN * place_ratio +
-                          row["Bet Amount"] * SHOW_FRACTION_FOR_WIN * show_ratio)
+                payout = (row["Bet Amount"] / 3) * win_ratio
+                payout += (row["Bet Amount"] / 3) * place_ratio
+                payout += (row["Bet Amount"] / 3) * show_ratio
             elif row["Bet Type"] == "Place":
-                payout = (row["Bet Amount"] * PLACE_FRACTION * place_ratio +
-                          row["Bet Amount"] * SHOW_FRACTION_FOR_PLACE * show_ratio)
+                payout = (row["Bet Amount"] / 2) * place_ratio
+                payout += (row["Bet Amount"] / 2) * show_ratio
             elif row["Bet Type"] == "Show":
                 payout = row["Bet Amount"] * show_ratio
         elif row["Bet Type"] == "Place" and row["Betting On"] == second:
-            payout = (row["Bet Amount"] * PLACE_FRACTION * place_ratio +
-                      row["Bet Amount"] * SHOW_FRACTION_FOR_PLACE * show_ratio)
+            payout = (row["Bet Amount"] / 2) * place_ratio + (row["Bet Amount"] / 2) * show_ratio
         elif row["Bet Type"] == "Show" and row["Betting On"] == third:
             payout = row["Bet Amount"] * show_ratio
     return payout
@@ -190,7 +223,5 @@ bets_df = st.session_state.bets.copy()
 bets_df["Payout"] = bets_df.apply(calculate_payout, axis=1)
 
 st.header("Individual Payouts")
-st.markdown("""
-Final Payouts once tournament is over (Payout null until tournament is over) 
-""")
+st.markdown("Final Payouts once tournament is over (Payout null until tournament is over)")
 st.dataframe(bets_df[["Bettor Name", "Betting On", "Bet Type", "Bet Amount", "Payout"]])
