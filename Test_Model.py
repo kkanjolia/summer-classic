@@ -10,18 +10,18 @@ def load_bets():
     if os.path.exists(BETS_FILE):
         return pd.read_csv(BETS_FILE)
     else:
-        # Use these column names consistently.
         return pd.DataFrame(columns=["Bettor Name", "Betting On", "Bet Type", "Bet Amount"])
 
 st.session_state.bets = load_bets()
 
 # --- Helper Functions for Each-Way Processing ---
+
 def effective_contribution(bet_type, amount, category):
     """
-    Returns the effective contribution of a bet to a given pool category:
-      - For Win bets: the contribution is amount/3 to each pool.
-      - For Place bets: the contribution is amount/2 to both Place and Show pools.
-      - For Show bets: the entire amount contributes only to the Show pool.
+    Returns the effective contribution for a bet to a pool category:
+    - For Win bets: split equally among Win, Place, and Show (amount/3 each)
+    - For Place bets: split equally between Place and Show (amount/2 each)
+    - For Show bets: full amount goes to Show pool.
     """
     if bet_type == "Win":
         return amount / 3
@@ -46,7 +46,7 @@ def effective_eligible_sum(bet_type, outcome, category):
     return total
 
 # ========= Admin Login Section in the Sidebar =========
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "default_password")  # Set via environment variable
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "default_password")  # Use environment variable
 
 def admin_login():
     with st.sidebar:
@@ -71,7 +71,7 @@ if st.session_state.admin_logged_in:
 st.title("2025 Summer Classic")
 
 # ========= Betting Lock Time =========
-# 1:55 PM EDT on June 12, 2025 is 17:55 UTC (since EDT is UTC-4)
+# 1:55 PM EDT on June 12, 2025 == 17:55 UTC (EDT is UTC-4)
 lock_time_utc = datetime(2025, 6, 12, 17, 55, tzinfo=timezone.utc)
 now_utc = datetime.now(timezone.utc)
 wagering_open = now_utc < lock_time_utc
@@ -82,7 +82,6 @@ else:
     st.warning("Wagering is CLOSED.")
 
 # ========= Public Bet Form =========
-# Only display bet form if wagering is open.
 if wagering_open:
     def bet_form():
         with st.form("bet_form", clear_on_submit=True):
@@ -139,15 +138,15 @@ st.write("**Effective Show Pool:** $", total_show_eff)
 # ========= Hypothetical Payout Ratios Section (Using Raw Totals) =========
 st.header("Bet Summary and Hypothetical Payout Ratios")
 st.markdown("""
-This table summarizes the bets by outcome in each category and shows the raw payout ratios calculated as:
-    Payout Ratio = (Total Pool for category) / (Total bets on that outcome).
+This table summarizes the bets by outcome (the horse) in each category and shows the raw payout ratios,
+calculated as: (Total Pool for the category) / (Total bets on that outcome).
 """)
 def create_summary():
     summary = st.session_state.bets.pivot_table(
-        index="Betting On",
-        columns="Bet Type",
-        values="Bet Amount",
-        aggfunc="sum",
+        index="Betting On", 
+        columns="Bet Type", 
+        values="Bet Amount", 
+        aggfunc="sum", 
         fill_value=0
     ).reset_index()
     for bt in ["Win", "Place", "Show"]:
@@ -159,7 +158,6 @@ def create_summary():
     summary["Payout Ratio Place"] = summary["Total Bet Place"].apply(lambda x: total_place / x if x > 0 else 0)
     summary["Payout Ratio Show"] = summary["Total Bet Show"].apply(lambda x: total_show / x if x > 0 else 0)
     return summary
-
 summary = create_summary()
 st.dataframe(summary)
 
@@ -198,9 +196,9 @@ eligible_info = {
     "Place": {"E": eligible_place_eff, "T": total_place_eff},
     "Show": {"E": eligible_show_eff, "T": total_show_eff}
 }
-# Total extra funds from any pool with zero eligible bets.
+# Calculate extra funds from any pool with zero eligible bets.
 extra_total = sum(info["T"] for pool, info in eligible_info.items() if info["E"] == 0)
-# Sum of totals for pools that do have eligible bets.
+# Sum of totals for pools with eligible bets.
 sum_T_for_eligible = sum(info["T"] for pool, info in eligible_info.items() if info["E"] > 0)
 payout_ratios = {}
 for pool, info in eligible_info.items():
@@ -211,7 +209,7 @@ for pool, info in eligible_info.items():
     else:
         payout_ratios[pool] = 0
 
-# Lock final payout ratios when betting is closed.
+# ========= Lock Final Payout Ratios =========
 if "wagering_closed" not in st.session_state:
     st.session_state.wagering_closed = False
 if st.session_state.admin_logged_in and st.button("Lock Wagering and Compute Final Payouts"):
@@ -238,13 +236,15 @@ summary_df = st.session_state.bets.groupby(["Betting On", "Bet Type"])["Bet Amou
 st.dataframe(summary_df)
 
 # ========= Each-Way Payout Calculation =========
-WIN_FRACTION = 1/3   # For Win bets: split into three equal parts
-PLACE_FRACTION = 1/2 # For Place bets: split into two equal parts
+# Define fixed fractions for splitting bets
+WIN_FRACTION = 1/3     # For Win bets: each one-third goes to Win, Place, Show
+PLACE_FRACTION = 1/2   # For Place bets: split evenly between Place and Show
 
 def calculate_payout(row):
+    # Calculate raw payout based on each-way splitting and final payout ratios.
     payout = 0
     if winner is not None:
-        # Case: bets on the horse that finished 1st.
+        # If the bet is on the horse that finished first:
         if row["Betting On"] == winner:
             if row["Bet Type"] == "Win":
                 win_eff = row["Bet Amount"] * WIN_FRACTION
@@ -262,19 +262,33 @@ def calculate_payout(row):
             elif row["Bet Type"] == "Show":
                 if row["Betting On"] in [winner, second, third]:
                     payout = row["Bet Amount"] / eligible_show_eff * total_show_eff if eligible_show_eff > 0 else 0
-        # Case: bets on the horse that finished 2nd (only applicable for Place bets)
+        # If the bet is on the horse that finished second (only applicable for Place bets)
         elif row["Bet Type"] == "Place" and row["Betting On"] == second:
             place_eff = row["Bet Amount"] * PLACE_FRACTION
             show_eff = row["Bet Amount"] * PLACE_FRACTION
             payout = (place_eff / eligible_place_eff * total_place_eff if eligible_place_eff > 0 else 0) + \
                      (show_eff / eligible_show_eff * total_show_eff if eligible_show_eff > 0 else 0)
-        # Case: bets on the horse that finished 3rd (only applicable for Show bets)
+        # If the bet is on the horse that finished third (only applicable for Show bets)
         elif row["Bet Type"] == "Show" and row["Betting On"] == third:
             payout = row["Bet Amount"] / eligible_show_eff * total_show_eff if eligible_show_eff > 0 else 0
     return payout
 
-bets_df = pd.DataFrame(st.session_state.bets)
-bets_df["Payout"] = bets_df.apply(calculate_payout, axis=1)
+# Calculate raw individual payouts.
+bets_df = st.session_state.bets.copy()
+bets_df["Raw Payout"] = bets_df.apply(calculate_payout, axis=1)
+
+# Scale raw payouts so that the sum equals the total bet pool.
+total_raw_payout = bets_df["Raw Payout"].sum()
+scale_factor = (total_pool / total_raw_payout) if total_raw_payout > 0 else 0
+bets_df["Payout"] = bets_df["Raw Payout"] * scale_factor
+
+# For any bet that did not qualify, ensure payout is 0.
+bets_df.loc[bets_df["Payout"].isna(), "Payout"] = 0
+
 st.header("Individual Payouts")
-st.markdown("Final Payouts once tournament is over")
+st.markdown("Final Payouts once tournament is over (scaled so total payout equals total bet pool)")
 st.dataframe(bets_df[["Bettor Name", "Betting On", "Bet Type", "Bet Amount", "Payout"]])
+
+# Display a final summary: total wagered vs. total payout.
+st.write("**Total Wagered:** $", total_pool)
+st.write("**Total Payout (Scaled):** $", round(bets_df["Payout"].sum(), 2))
