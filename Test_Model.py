@@ -61,7 +61,6 @@ def admin_login():
 
 if "admin_logged_in" not in st.session_state:
     st.session_state.admin_logged_in = False
-
 admin_login()
 if st.session_state.admin_logged_in:
     if st.button("Logout"):
@@ -71,9 +70,17 @@ if st.session_state.admin_logged_in:
 st.title("2025 Summer Classic")
 
 # ========= Betting Lock Toggle =========
-# Instead of using a timestamp, betting is locked when the admin clicks "Lock Wagering..."
+# Admin can toggle wagering lock manually.
 if "wagering_closed" not in st.session_state:
     st.session_state.wagering_closed = False
+
+if st.session_state.admin_logged_in:
+    if st.button("Toggle Wagering Lock"):
+        st.session_state.wagering_closed = not st.session_state.wagering_closed
+        if st.session_state.wagering_closed:
+            st.success("Wagering locked.")
+        else:
+            st.info("Wagering unlocked.")
 
 if not st.session_state.wagering_closed:
     st.info("Wagering is OPEN. New bets are accepted.")
@@ -82,9 +89,8 @@ else:
 
 # ========= Admin Wager Management: Delete Bets =========
 if st.session_state.admin_logged_in:
-    st.subheader("Admin: Manage Wagers")
+    st.subheader("Admin: Manage Wagers (Delete Erroneous Bets)")
     if not st.session_state.bets.empty:
-        # Let admin select row indices to delete
         indices = st.multiselect("Select wager row indices to delete", options=list(st.session_state.bets.index))
         if st.button("Delete Selected Wagers"):
             if indices:
@@ -120,7 +126,7 @@ if not st.session_state.wagering_closed:
 else:
     st.error("Betting is closed; no new bets accepted.")
 
-# (Note: Current Bets section has been removed per your request.)
+# (Current Bets section removed as per request.)
 
 # ========= Raw Total Pools =========
 def calculate_pools():
@@ -151,15 +157,15 @@ st.write("**Effective Show Pool:** $", total_show_eff)
 # ========= Hypothetical Payout Ratios (Raw) =========
 st.header("Bet Summary and Raw Payout Ratios")
 st.markdown("""
-This table summarizes bets by outcome (the horse) and shows raw payout ratios,
+This table summarizes bets by outcome (the horse) and shows the raw payout ratios,
 calculated as: (Total Pool for the category) / (Total bets on that outcome).
 """)
 def create_summary():
     summary = st.session_state.bets.pivot_table(
-        index="Betting On", 
-        columns="Bet Type", 
-        values="Bet Amount", 
-        aggfunc="sum", 
+        index="Betting On",
+        columns="Bet Type",
+        values="Bet Amount",
+        aggfunc="sum",
         fill_value=0
     ).reset_index()
     for bt in ["Win", "Place", "Show"]:
@@ -220,13 +226,16 @@ for pool, info in eligible_info.items():
     else:
         payout_ratios[pool] = 0
 
-# ========= Lock Final Payout Ratios (Admin Toggle) =========
+# ========= Lock/Unlock Final Payout Ratios (Admin Toggle) =========
 if "wagering_closed" not in st.session_state:
     st.session_state.wagering_closed = False
-if st.session_state.admin_logged_in and st.button("Lock Wagering and Compute Final Payouts"):
-    st.session_state.wagering_closed = True
-    st.session_state.final_payout_ratios = payout_ratios
-    st.success("Wagering locked. Final payout ratios computed.")
+if st.session_state.admin_logged_in and st.button("Toggle Wagering Lock"):
+    st.session_state.wagering_closed = not st.session_state.wagering_closed
+    if st.session_state.wagering_closed:
+        st.session_state.final_payout_ratios = payout_ratios
+        st.success("Wagering locked. Final payout ratios computed.")
+    else:
+        st.info("Wagering unlocked.")
 
 if st.session_state.get("wagering_closed", False):
     final_win_ratio = st.session_state.final_payout_ratios.get("Win", 0)
@@ -247,11 +256,10 @@ summary_df = st.session_state.bets.groupby(["Betting On", "Bet Type"])["Bet Amou
 st.dataframe(summary_df)
 
 # ========= Each-Way Payout Calculation =========
-WIN_FRACTION = 1/3     # For Win bets: each one-third goes to Win, Place, and Show
-PLACE_FRACTION = 1/2   # For Place bets: split evenly between Place and Show
+WIN_FRACTION = 1/3     # For Win bets: split equally into Win, Place, and Show
+PLACE_FRACTION = 1/2   # For Place bets: split equally between Place and Show
 
 def calculate_payout(row):
-    # Compute raw payout based on each-way splitting and final payout ratios.
     payout = 0
     if winner is not None:
         if row["Betting On"] == winner:
@@ -283,7 +291,7 @@ def calculate_payout(row):
 bets_df = st.session_state.bets.copy()
 bets_df["Raw Payout"] = bets_df.apply(calculate_payout, axis=1)
 
-# Scale raw payouts so that the total payout equals the total bet pool.
+# Scale raw payouts so that the sum equals the total bet pool.
 total_raw = bets_df["Raw Payout"].sum()
 scale_factor = (total_pool / total_raw) if total_raw > 0 else 0
 bets_df["Payout"] = bets_df["Raw Payout"] * scale_factor
