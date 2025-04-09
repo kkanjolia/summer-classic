@@ -11,17 +11,17 @@ def load_bets():
     else:
         return pd.DataFrame(columns=["Bettor Name", "Betting On", "Bet Type", "Bet Amount"])
 
-# Load or initialize bets in session_state
 st.session_state.bets = load_bets()
 
 # --- Helper Functions for Each-Way Processing ---
 
 def effective_contribution(bet_type, amount, category):
     """
-    Returns the effective contribution of a bet to a given pool category.
-    - For Win bets: split equally among Win, Place, and Show (amount/3 each).
-    - For Place bets: split equally between Place and Show (amount/2 each).
-    - For Show bets: full amount goes to Show pool.
+    Returns the effective contribution of a bet (i.e. the portion of the wager)
+    for a given pool category:
+      - For Win bets: split equally among Win, Place, and Show (amount/3 each).
+      - For Place bets: split equally between Place and Show (amount/2 each).
+      - For Show bets: full amount goes to Show pool.
     """
     if bet_type == "Win":
         return amount / 3
@@ -46,7 +46,7 @@ def effective_eligible_sum(bet_type, outcome, category):
     return total
 
 # ========= Admin Login Section in the Sidebar =========
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "default_password")  # Set via env var
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "default_password")  # Use environment variable for admin password
 
 def admin_login():
     with st.sidebar:
@@ -143,9 +143,9 @@ def create_summary():
         else:
             summary[f"Total Bet {bet_type}"] = 0
 
-    summary["Payout Ratio Win"] = summary["Total Bet Win"].apply(lambda x: total_win / x if x > 0 else None)
-    summary["Payout Ratio Place"] = summary["Total Bet Place"].apply(lambda x: total_place / x if x > 0 else None)
-    summary["Payout Ratio Show"] = summary["Total Bet Show"].apply(lambda x: total_show / x if x > 0 else None)
+    summary["Payout Ratio Win"] = summary["Total Bet Win"].apply(lambda x: total_win / x if x > 0 else 0)
+    summary["Payout Ratio Place"] = summary["Total Bet Place"].apply(lambda x: total_place / x if x > 0 else 0)
+    summary["Payout Ratio Show"] = summary["Total Bet Show"].apply(lambda x: total_show / x if x > 0 else 0)
     
     return summary
 
@@ -181,10 +181,28 @@ eligible_show_eff = (effective_eligible_sum("Show", winner, "Show") +
                      effective_eligible_sum("Show", second, "Show") +
                      effective_eligible_sum("Show", third, "Show"))
 
-# ========= Compute Payout Ratios Based on Effective Values =========
-win_ratio = total_win_eff / eligible_win_eff if eligible_win_eff > 0 else 0
-place_ratio = total_place_eff / eligible_place_eff if eligible_place_eff > 0 else 0
-show_ratio = total_show_eff / eligible_show_eff if eligible_show_eff > 0 else 0
+# ========= Redistribution: If a pool has no eligible bets, redistribute its effective funds
+eligible_info = {
+    "Win": {"E": eligible_win_eff, "T": total_win_eff},
+    "Place": {"E": eligible_place_eff, "T": total_place_eff},
+    "Show": {"E": eligible_show_eff, "T": total_show_eff}
+}
+# Calculate extra funds from pools with zero eligible effective contribution.
+extra_total = sum(info["T"] for pool, info in eligible_info.items() if info["E"] == 0)
+# Sum the effective pool totals for those with eligible contributions.
+sum_T_for_eligible = sum(info["T"] for pool, info in eligible_info.items() if info["E"] > 0)
+payout_ratios = {}
+for pool, info in eligible_info.items():
+    if info["E"] > 0:
+         extra_for_pool = extra_total * (info["T"] / sum_T_for_eligible) if sum_T_for_eligible > 0 else 0
+         effective_total = info["T"] + extra_for_pool
+         payout_ratios[pool] = effective_total / info["E"]
+    else:
+         payout_ratios[pool] = 0
+
+win_ratio = payout_ratios["Win"]
+place_ratio = payout_ratios["Place"]
+show_ratio = payout_ratios["Show"]
 
 st.write("**Win Payout Ratio:**", win_ratio)
 st.write("**Place Payout Ratio:**", place_ratio)
@@ -196,6 +214,7 @@ summary_df = st.session_state.bets.groupby(["Betting On", "Bet Type"])["Bet Amou
 st.dataframe(summary_df)
 
 # ========= Each-Way Payout Calculation =========
+# Define fractions for splitting
 WIN_FRACTION = 1/3          # For Win bets: 1/3 to win, 1/3 to place, 1/3 to show
 PLACE_FRACTION = 1/2        # For Place bets: 1/2 to place, 1/2 to show
 
@@ -207,25 +226,25 @@ def calculate_payout(row):
                 win_eff = row["Bet Amount"] * WIN_FRACTION
                 place_eff = row["Bet Amount"] * WIN_FRACTION
                 show_eff = row["Bet Amount"] * WIN_FRACTION
-                payout = (win_eff / eligible_win_eff * total_win_eff) + \
-                         (place_eff / eligible_place_eff * total_place_eff) + \
-                         (show_eff / eligible_show_eff * total_show_eff)
+                payout = (win_eff / eligible_win_eff * total_win_eff if eligible_win_eff > 0 else 0) + \
+                         (place_eff / eligible_place_eff * total_place_eff if eligible_place_eff > 0 else 0) + \
+                         (show_eff / eligible_show_eff * total_show_eff if eligible_show_eff > 0 else 0)
             elif row["Bet Type"] == "Place":
                 if row["Betting On"] in [winner, second]:
                     place_eff = row["Bet Amount"] * PLACE_FRACTION
                     show_eff = row["Bet Amount"] * PLACE_FRACTION
-                    payout = (place_eff / eligible_place_eff * total_place_eff) + \
-                             (show_eff / eligible_show_eff * total_show_eff)
+                    payout = (place_eff / eligible_place_eff * total_place_eff if eligible_place_eff > 0 else 0) + \
+                             (show_eff / eligible_show_eff * total_show_eff if eligible_show_eff > 0 else 0)
             elif row["Bet Type"] == "Show":
                 if row["Betting On"] in [winner, second, third]:
-                    payout = row["Bet Amount"] / eligible_show_eff * total_show_eff
+                    payout = row["Bet Amount"] / eligible_show_eff * total_show_eff if eligible_show_eff > 0 else 0
         elif row["Bet Type"] == "Place" and row["Betting On"] == second:
             place_eff = row["Bet Amount"] * PLACE_FRACTION
             show_eff = row["Bet Amount"] * PLACE_FRACTION
-            payout = (place_eff / eligible_place_eff * total_place_eff) + \
-                     (show_eff / eligible_show_eff * total_show_eff)
+            payout = (place_eff / eligible_place_eff * total_place_eff if eligible_place_eff > 0 else 0) + \
+                     (show_eff / eligible_show_eff * total_show_eff if eligible_show_eff > 0 else 0)
         elif row["Bet Type"] == "Show" and row["Betting On"] == third:
-            payout = row["Bet Amount"] / eligible_show_eff * total_show_eff
+            payout = row["Bet Amount"] / eligible_show_eff * total_show_eff if eligible_show_eff > 0 else 0
     return payout
 
 bets_df = st.session_state.bets.copy()
