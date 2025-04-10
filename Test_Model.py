@@ -34,7 +34,10 @@ else:
     st.write("Current user:", st.session_state.current_user)
     if st.button("Back / Change Name"):
         st.session_state.current_user = None
+    try:
         st.experimental_rerun()
+    except Exception:
+        st.stop()
 
 # --- Helper Functions for Each-Way Processing ---
 def effective_contribution(bet_type, amount, category):
