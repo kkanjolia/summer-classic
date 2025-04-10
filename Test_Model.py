@@ -11,15 +11,18 @@ def load_bets():
     if os.path.exists(BETS_FILE):
         return pd.read_csv(BETS_FILE)
     else:
-        # Create an empty DataFrame with appropriate columns.
         return pd.DataFrame(columns=["Bettor Name", "Betting On", "Bet Type", "Bet Amount"])
 
 st.session_state.bets = load_bets()
 
 # --- Helper Functions for Each-Way Processing ---
-# (These functions compute effective pool totals based on each-way splitting.
-#  They still factor in the splitting of the wager for pool building.)
 def effective_contribution(bet_type, amount, category):
+    """
+    Returns the effective contribution for a bet to a pool category:
+      - For Win bets: split equally among Win, Place, and Show (amount/3 each)
+      - For Place bets: split equally between Place and Show (amount/2 each)
+      - For Show bets: full amount goes to Show pool.
+    """
     if bet_type == "Win":
         return amount / 3.0
     elif bet_type == "Place":
@@ -51,7 +54,6 @@ def admin_login():
 
 if "admin_logged_in" not in st.session_state:
     st.session_state.admin_logged_in = False
-
 admin_login()
 if st.session_state.admin_logged_in:
     if st.button("Logout", key="logout_button"):
@@ -81,7 +83,7 @@ else:
 if st.session_state.admin_logged_in:
     st.subheader("Admin: Manage Wagers (Delete Erroneous Bets)")
     if not st.session_state.bets.empty:
-        indices = st.multiselect("Select wager row indices to delete", options=list(st.session_state.bets.index))
+        indices = st.multiselect("Select wager row indices to delete", options=list(st.session_state.bets.index), key="delete_indices")
         if st.button("Delete Selected Wagers", key="delete_wagers"):
             if indices:
                 st.session_state.bets = st.session_state.bets.drop(indices).reset_index(drop=True)
@@ -136,6 +138,7 @@ st.write("**Place Pool:** $", total_place)
 st.write("**Show Pool:** $", total_show)
 
 # ========= Effective Pool Totals (Each-Way Splitting) =========
+# These are based on the split contributions.
 total_win_eff = total_effective_pool("Win")
 total_place_eff = total_effective_pool("Place")
 total_show_eff = total_effective_pool("Show")
@@ -147,15 +150,15 @@ st.write("**Effective Show Pool:** $", total_show_eff)
 # ========= Hypothetical Payout Ratios (Raw) =========
 st.header("Bet Summary and Raw Payout Ratios")
 st.markdown("""
-This table summarizes bets by outcome (the horse) and shows raw payout ratios,
+This table summarizes bets by outcome (the horse) and shows the raw payout ratios,
 calculated as: (Total Pool for the category) / (Total bets on that outcome).
 """)
 def create_summary():
     summary = st.session_state.bets.pivot_table(
-        index="Betting On", 
-        columns="Bet Type", 
-        values="Bet Amount", 
-        aggfunc="sum", 
+        index="Betting On",
+        columns="Bet Type",
+        values="Bet Amount",
+        aggfunc="sum",
         fill_value=0
     ).reset_index()
     for bt in ["Win", "Place", "Show"]:
@@ -167,12 +170,13 @@ def create_summary():
     summary["Payout Ratio Place"] = summary["Total Bet Place"].apply(lambda x: total_place / x if x > 0 else 0)
     summary["Payout Ratio Show"] = summary["Total Bet Show"].apply(lambda x: total_show / x if x > 0 else 0)
     return summary
+
 summary = create_summary()
 st.dataframe(summary)
 
 # ========= Finishing Order Section (Admin Only) =========
-options = ["Anthony Sousa", "Connor Donovan", "Chris Brown", "Jared Joaquin", "Jim Alexander", 
-           "Joe Canavan", "Mark Leonard", "Pete Koskores", "Pete Sullivan", "Ryan Barcome", 
+options = ["Anthony Sousa", "Connor Donovan", "Chris Brown", "Jared Joaquin", "Jim Alexander",
+           "Joe Canavan", "Mark Leonard", "Pete Koskores", "Pete Sullivan", "Ryan Barcome",
            "Kunal Kanjolia", "Mike Leonard"]
 
 if st.session_state.admin_logged_in:
@@ -191,17 +195,16 @@ else:
     else:
         winner = second = third = None
 
-# ========= Compute Eligible Raw Sums (Full Bet Amounts) for Payout Calculation =========
-# For each pool, we use the raw bet amounts (not fractions) for eligible bets.
-eligible_win_raw = st.session_state.bets.loc[(st.session_state.bets["Bet Type"]=="Win") & 
+# ========= Compute Eligible Raw Sums for Payout Calculation =========
+# Use full bet amounts for eligible wagers.
+eligible_win_raw = st.session_state.bets.loc[(st.session_state.bets["Bet Type"]=="Win") &
                                                (st.session_state.bets["Betting On"]==winner), "Bet Amount"].sum()
-eligible_place_raw = st.session_state.bets.loc[(st.session_state.bets["Bet Type"]=="Place") & 
+eligible_place_raw = st.session_state.bets.loc[(st.session_state.bets["Bet Type"]=="Place") &
                                                  (st.session_state.bets["Betting On"].isin([winner, second])), "Bet Amount"].sum()
-eligible_show_raw = st.session_state.bets.loc[(st.session_state.bets["Bet Type"]=="Show") & 
+eligible_show_raw = st.session_state.bets.loc[(st.session_state.bets["Bet Type"]=="Show") &
                                                 (st.session_state.bets["Betting On"].isin([winner, second, third])), "Bet Amount"].sum()
 
-# Effective pools remain based on the split:
-# (Redistribution logic remains unchanged.)
+# Effective pools remain as computed (based on split contributions).
 total_win_eff = total_effective_pool("Win")
 total_place_eff = total_effective_pool("Place")
 total_show_eff = total_effective_pool("Show")
@@ -252,17 +255,12 @@ summary_df = st.session_state.bets.groupby(["Betting On", "Bet Type"])["Bet Amou
 st.dataframe(summary_df)
 
 # ========= Each-Way Payout Calculation =========
-# For payout calculations, use the following logic:
-# - If the chosen outcome (the horse) is the winner:
-#   • If bet type is "Win": raw payout = stake * (win_ratio + place_ratio + show_ratio)
-#   • If bet type is "Place": raw payout = stake * (place_ratio + show_ratio)
-#   • If bet type is "Show": raw payout = stake * (show_ratio)
-# - Else, if bet type is "Place" and the chosen outcome is second:
-#      raw payout = stake * (place_ratio + show_ratio)
-# - Else, if bet type is "Show" and the chosen outcome is third:
-#      raw payout = stake * (show_ratio)
-# (This model ensures that a win bet on the winning horse gets all three pools,
-#  a place bet gets only place+show, and a show bet gets only show.)
+# Use the following payout logic:
+# - If a bet is placed on the winning horse:
+#    • "Win" bet: raw payout = wager * (final_win_ratio + final_place_ratio + final_show_ratio)
+#    • "Place" bet: raw payout = wager * (final_place_ratio + final_show_ratio)
+#    • "Show" bet: raw payout = wager * (final_show_ratio)
+# - Similarly for bets on second (Place) or third (Show) as appropriate.
 def calculate_payout(row):
     payout = 0
     if winner is not None:
