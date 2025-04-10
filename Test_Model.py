@@ -16,23 +16,25 @@ def load_bets():
 st.session_state.bets = load_bets()
 
 # ----- User Identification -----
-# Allow user to select their name once; also add a "Change Name" button.
 if "current_user" not in st.session_state:
     st.session_state.current_user = None
 
 if st.session_state.current_user is None:
-    st.session_state.current_user = st.selectbox(
+    selected_name = st.selectbox(
         "Select Your Name",
         ["Anthony Sousa", "Connor Donovan", "Chris Brown", "Jared Joaquin", 
          "Jim Alexander", "Joe Canavan", "Mark Leonard", "Pete Koskores", 
          "Pete Sullivan", "Kunal Kanjolia", "Mike Leonard", "Ryan Barcome"],
         key="current_user_select"
     )
+    if st.button("Confirm Name"):
+        st.session_state.current_user = selected_name
+        st.success(f"Name confirmed: {selected_name}")
 else:
     st.write("Current user:", st.session_state.current_user)
     if st.button("Back / Change Name"):
         st.session_state.current_user = None
-        st.experimental_rerun()  # Rerun to show the name selection
+        st.experimental_rerun()
 
 # --- Helper Functions for Each-Way Processing ---
 def effective_contribution(bet_type, amount, category):
@@ -169,10 +171,10 @@ st.write("**Effective Show Pool:** $", total_show_eff)
 st.header("Detailed Wager Summary")
 def create_summary():
     summary = st.session_state.bets.pivot_table(
-        index="Betting On",
-        columns="Bet Type",
-        values="Bet Amount",
-        aggfunc="sum",
+        index="Betting On", 
+        columns="Bet Type", 
+        values="Bet Amount", 
+        aggfunc="sum", 
         fill_value=0
     ).reset_index()
     for bt in ["Win", "Place", "Show"]:
