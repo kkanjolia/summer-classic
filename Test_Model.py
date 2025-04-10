@@ -4,36 +4,50 @@ import os
 from datetime import datetime, timezone
 from math import isclose
 
-# ======= Persistence Setup: Load bets from file =======
-BETS_FILE = "bets_data.csv"
+# --- Initialize session state keys if they don't exist ---
+if "current_user" not in st.session_state:
+    st.session_state["current_user"] = None
 
-def load_bets():
-    if os.path.exists(BETS_FILE):
-        return pd.read_csv(BETS_FILE)
-    else:
-        return pd.DataFrame(columns=["Bettor Name", "Betting On", "Bet Type", "Bet Amount"])
+if "admin_logged_in" not in st.session_state:
+    st.session_state["admin_logged_in"] = False
 
-st.session_state.bets = load_bets()
+if "wagering_closed" not in st.session_state:
+    st.session_state["wagering_closed"] = False
+
+if "bets" not in st.session_state:
+    # ======= Persistence Setup: Load bets from file =======
+    BETS_FILE = "bets_data.csv"
+
+    def load_bets():
+        if os.path.exists(BETS_FILE):
+            return pd.read_csv(BETS_FILE)
+        else:
+            return pd.DataFrame(columns=["Bettor Name", "Betting On", "Bet Type", "Bet Amount"])
+
+    st.session_state["bets"] = load_bets()
+else:
+    BETS_FILE = "bets_data.csv"
 
 # ----- User Identification -----
-if "current_user" not in st.session_state:
-    st.session_state.current_user = None
-
+user_select_container = st.empty()
 if st.session_state.current_user is None:
-    selected_name = st.selectbox(
-        "Select Your Name",
-        ["Anthony Sousa", "Connor Donovan", "Chris Brown", "Jared Joaquin", 
-         "Jim Alexander", "Joe Canavan", "Mark Leonard", "Pete Koskores", 
-         "Pete Sullivan", "Kunal Kanjolia", "Mike Leonard", "Ryan Barcome"],
-        key="current_user_select"
-    )
-    if st.button("Confirm Name"):
-        st.session_state.current_user = selected_name
-        st.success(f"Name confirmed: {selected_name}")
+    with user_select_container.container():
+        selected_name = st.selectbox(
+            "Select Your Name",
+            ["Anthony Sousa", "Connor Donovan", "Chris Brown", "Jared Joaquin",
+             "Jim Alexander", "Joe Canavan", "Mark Leonard", "Pete Koskores",
+             "Pete Sullivan", "Kunal Kanjolia", "Mike Leonard", "Ryan Barcome"],
+            key="user_select"
+        )
+        if st.button("Confirm Name", key="confirm_name"):
+            st.session_state.current_user = selected_name
+            st.success(f"Name confirmed: {selected_name}")
+            user_select_container.empty()
 else:
     st.write("Current user:", st.session_state.current_user)
-    if st.button("Back / Change Name"):
+    if st.button("Back / Change Name", key="back_name"):
         st.session_state.current_user = None
+        st.experimental_rerun()
 
 # --- Helper Functions for Each-Way Processing ---
 def effective_contribution(bet_type, amount, category):
@@ -72,8 +86,6 @@ def admin_login():
             else:
                 st.error("Incorrect password.")
 
-if "admin_logged_in" not in st.session_state:
-    st.session_state.admin_logged_in = False
 admin_login()
 if st.session_state.admin_logged_in:
     if st.button("Logout", key="logout_button"):
@@ -83,9 +95,6 @@ if st.session_state.admin_logged_in:
 st.title("2025 Summer Classic")
 
 # ========= Betting Lock Toggle (Admin Only) =========
-if "wagering_closed" not in st.session_state:
-    st.session_state.wagering_closed = False
-
 if st.session_state.admin_logged_in:
     if st.button("Toggle Wagering Lock", key="toggle_lock"):
         st.session_state.wagering_closed = not st.session_state.wagering_closed
@@ -119,10 +128,11 @@ if not st.session_state.wagering_closed:
     with st.form("bet_form", clear_on_submit=True):
         st.subheader("Place a Bet")
         st.write("Bettor Name:", st.session_state.current_user)
-        horse = st.selectbox("Betting On", 
-            ["Anthony Sousa", "Connor Donovan", "Chris Brown", "Jared Joaquin", 
-             "Jim Alexander", "Joe Canavan", "Mark Leonard", "Pete Koskores", 
-             "Pete Sullivan", "Kunal Kanjolia", "Mike Leonard", "Ryan Barcome"], key="betting_on")
+        horse = st.selectbox("Betting On",
+            ["Anthony Sousa", "Connor Donovan", "Chris Brown", "Jared Joaquin",
+             "Jim Alexander", "Joe Canavan", "Mark Leonard", "Pete Koskores",
+             "Pete Sullivan", "Kunal Kanjolia", "Mike Leonard", "Ryan Barcome"],
+            key="betting_on")
         bet_type = st.selectbox("Bet Type", ["Win", "Place", "Show"], key="bet_type")
         bet_amount = st.number_input("Bet Amount ($)", min_value=1, step=1, key="bet_amount")
         submitted = st.form_submit_button("Submit Bet")
@@ -170,10 +180,10 @@ st.write("**Effective Show Pool:** $", total_show_eff)
 st.header("Detailed Wager Summary")
 def create_summary():
     summary = st.session_state.bets.pivot_table(
-        index="Betting On", 
-        columns="Bet Type", 
-        values="Bet Amount", 
-        aggfunc="sum", 
+        index="Betting On",
+        columns="Bet Type",
+        values="Bet Amount",
+        aggfunc="sum",
         fill_value=0
     ).reset_index()
     for bt in ["Win", "Place", "Show"]:
