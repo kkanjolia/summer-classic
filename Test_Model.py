@@ -19,9 +19,9 @@ st.session_state.bets = load_bets()
 def effective_contribution(bet_type, amount, category):
     """
     Returns the effective contribution for a bet to a pool category:
-    - For Win bets: split equally among Win, Place, and Show (amount/3 each)
-    - For Place bets: split equally between Place and Show (amount/2 each)
-    - For Show bets: full amount goes to Show pool.
+      - For Win bets: split equally among Win, Place, and Show (amount/3 each)
+      - For Place bets: split equally between Place and Show (amount/2 each)
+      - For Show bets: full amount goes to Show pool.
     """
     if bet_type == "Win":
         return amount / 3.0
@@ -70,7 +70,7 @@ if st.session_state.admin_logged_in:
 st.title("2025 Summer Classic")
 
 # ========= Betting Lock Toggle =========
-# Admin can toggle wagering lock manually.
+# Admin can manually toggle wagering lock.
 if "wagering_closed" not in st.session_state:
     st.session_state.wagering_closed = False
 
@@ -78,7 +78,7 @@ if st.session_state.admin_logged_in:
     if st.button("Toggle Wagering Lock"):
         st.session_state.wagering_closed = not st.session_state.wagering_closed
         if st.session_state.wagering_closed:
-            st.success("Wagering locked.")
+            st.success("Wagering locked. Final payout ratios computed.")
         else:
             st.info("Wagering unlocked.")
 
@@ -116,7 +116,7 @@ if not st.session_state.wagering_closed:
                  "Pete Sullivan", "Kunal Kanjolia", "Mike Leonard", "Ryan Barcome"])
             bet_type = st.selectbox("Bet Type", ["Win", "Place", "Show"])
             bet_amount = st.number_input("**Bet Amount:** $", min_value=0, step=1)
-            submitted = st.form_submit_button("Submit Bet")
+            submitted = st.form_submit_button("Submit Bet")  # Removed key argument here
             if submitted:
                 new_bet = pd.DataFrame([[Bettor_Name, Who_You_Bet_On, bet_type, bet_amount]],
                                        columns=["Bettor Name", "Betting On", "Bet Type", "Bet Amount"])
@@ -181,15 +181,15 @@ summary = create_summary()
 st.dataframe(summary)
 
 # ========= Finishing Order Section (Admin Only) =========
-options = ["Anthony Sousa", "Connor Donovan", "Chris Brown", "Jared Joaquin", "Jim Alexander", 
-           "Joe Canavan", "Mark Leonard", "Pete Koskores", "Pete Sullivan", "Ryan Barcome", 
+options = ["Anthony Sousa", "Connor Donovan", "Chris Brown", "Jared Joaquin", "Jim Alexander",
+           "Joe Canavan", "Mark Leonard", "Pete Koskores", "Pete Sullivan", "Ryan Barcome",
            "Kunal Kanjolia", "Mike Leonard"]
 
 if st.session_state.admin_logged_in:
     st.header("Enter Finishing Order (Admin Only)")
-    winner = st.selectbox("Winner (1st)", options, key="winner")
-    second = st.selectbox("2nd Place", options, key="second")
-    third = st.selectbox("3rd Place", options, key="third")
+    winner = st.selectbox("Winner (1st)", options, key="winner_select")
+    second = st.selectbox("2nd Place", options, key="second_select")
+    third = st.selectbox("3rd Place", options, key="third_select")
     st.session_state.finishing_order = {"winner": winner, "second": second, "third": third}
 else:
     st.info("Finishing order can only be adjusted by the admin.")
@@ -201,7 +201,7 @@ else:
     else:
         winner = second = third = None
 
-# ========= Compute Eligible Effective Sums =========
+# ========= Compute Eligible Effective Sums for Payout Ratio Calculation =========
 eligible_win_eff = effective_eligible_sum("Win", winner, "Win")
 eligible_place_eff = (effective_eligible_sum("Place", winner, "Place") +
                       effective_eligible_sum("Place", second, "Place"))
@@ -229,7 +229,7 @@ for pool, info in eligible_info.items():
 # ========= Lock/Unlock Final Payout Ratios (Admin Toggle) =========
 if "wagering_closed" not in st.session_state:
     st.session_state.wagering_closed = False
-if st.session_state.admin_logged_in and st.button("Toggle Wagering Lock"):
+if st.session_state.admin_logged_in and st.button("Toggle Wagering Lock", key="toggle_lock_button"):
     st.session_state.wagering_closed = not st.session_state.wagering_closed
     if st.session_state.wagering_closed:
         st.session_state.final_payout_ratios = payout_ratios
