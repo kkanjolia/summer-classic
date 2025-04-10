@@ -4,29 +4,27 @@ import os
 from datetime import datetime, timezone
 from math import isclose
 
-# --- Initialize session state keys if they don't exist ---
-if "current_user" not in st.session_state:
-    st.session_state["current_user"] = None
+# ======= Persistence Setup: Load bets from file =======
+BETS_FILE = "bets_data.csv"
 
-if "admin_logged_in" not in st.session_state:
-    st.session_state["admin_logged_in"] = False
-
-if "wagering_closed" not in st.session_state:
-    st.session_state["wagering_closed"] = False
+def load_bets():
+    if os.path.exists(BETS_FILE):
+        return pd.read_csv(BETS_FILE)
+    else:
+        return pd.DataFrame(columns=["Bettor Name", "Betting On", "Bet Type", "Bet Amount"])
 
 if "bets" not in st.session_state:
-    # ======= Persistence Setup: Load bets from file =======
-    BETS_FILE = "bets_data.csv"
-
-    def load_bets():
-        if os.path.exists(BETS_FILE):
-            return pd.read_csv(BETS_FILE)
-        else:
-            return pd.DataFrame(columns=["Bettor Name", "Betting On", "Bet Type", "Bet Amount"])
-
     st.session_state["bets"] = load_bets()
 else:
-    BETS_FILE = "bets_data.csv"
+    st.session_state["bets"] = load_bets()
+
+# ----- Initialize session state keys if not already set -----
+if "current_user" not in st.session_state:
+    st.session_state["current_user"] = None
+if "admin_logged_in" not in st.session_state:
+    st.session_state["admin_logged_in"] = False
+if "wagering_closed" not in st.session_state:
+    st.session_state["wagering_closed"] = False
 
 # ----- User Identification -----
 user_select_container = st.empty()
@@ -47,9 +45,12 @@ else:
     st.write("Current user:", st.session_state.current_user)
     if st.button("Back / Change Name", key="back_name"):
         st.session_state.current_user = None
-        st.experimental_rerun()
+        try:
+            st.experimental_rerun()
+        except Exception:
+            st.stop()
 
-# --- Helper Functions for Each-Way Processing ---
+# ----- Helper Functions for Each-Way Processing -----
 def effective_contribution(bet_type, amount, category):
     """
     Returns the effective contribution for a bet to a pool category:
