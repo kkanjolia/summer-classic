@@ -16,17 +16,23 @@ def load_bets():
 st.session_state.bets = load_bets()
 
 # ----- User Identification -----
-# If the user has not yet selected their name, show a drop down.
-if "current_user" not in st.session_state or st.session_state.current_user is None:
+# Allow user to select their name once; also add a "Change Name" button.
+if "current_user" not in st.session_state:
+    st.session_state.current_user = None
+
+if st.session_state.current_user is None:
     st.session_state.current_user = st.selectbox(
         "Select Your Name",
         ["Anthony Sousa", "Connor Donovan", "Chris Brown", "Jared Joaquin", 
          "Jim Alexander", "Joe Canavan", "Mark Leonard", "Pete Koskores", 
          "Pete Sullivan", "Kunal Kanjolia", "Mike Leonard", "Ryan Barcome"],
-        key="current_user"
+        key="current_user_select"
     )
 else:
     st.write("Current user:", st.session_state.current_user)
+    if st.button("Back / Change Name"):
+        st.session_state.current_user = None
+        st.experimental_rerun()  # Rerun to show the name selection
 
 # --- Helper Functions for Each-Way Processing ---
 def effective_contribution(bet_type, amount, category):
@@ -111,7 +117,6 @@ if st.session_state.admin_logged_in:
 if not st.session_state.wagering_closed:
     with st.form("bet_form", clear_on_submit=True):
         st.subheader("Place a Bet")
-        # Use the current_user from session_state for the bettor name.
         st.write("Bettor Name:", st.session_state.current_user)
         horse = st.selectbox("Betting On", 
             ["Anthony Sousa", "Connor Donovan", "Chris Brown", "Jared Joaquin", 
@@ -147,7 +152,6 @@ st.write("**Place Pool:** $", total_place)
 st.write("**Show Pool:** $", total_show)
 
 # ========= Effective Pool Totals (Each-Way Splitting) =========
-# Compute effective contributions using the full bets DataFrame copy.
 bets_df = st.session_state.bets.copy()
 bets_df["Win Contrib"] = bets_df.apply(lambda row: effective_contribution(row["Bet Type"], row["Bet Amount"], "Win"), axis=1)
 bets_df["Place Contrib"] = bets_df.apply(lambda row: effective_contribution(row["Bet Type"], row["Bet Amount"], "Place"), axis=1)
@@ -165,10 +169,10 @@ st.write("**Effective Show Pool:** $", total_show_eff)
 st.header("Detailed Wager Summary")
 def create_summary():
     summary = st.session_state.bets.pivot_table(
-        index="Betting On", 
-        columns="Bet Type", 
-        values="Bet Amount", 
-        aggfunc="sum", 
+        index="Betting On",
+        columns="Bet Type",
+        values="Bet Amount",
+        aggfunc="sum",
         fill_value=0
     ).reset_index()
     for bt in ["Win", "Place", "Show"]:
@@ -206,7 +210,6 @@ else:
         winner = second = third = None
 
 # ========= Compute Eligible Raw Sums for Payout Calculation =========
-# Use full bet amounts for eligibility.
 win_eligible_total = bets_df.loc[bets_df["Betting On"] == winner, "Win Contrib"].sum()
 place_eligible_total = bets_df.loc[bets_df["Betting On"].isin([winner, second]), "Place Contrib"].sum()
 show_eligible_total = bets_df.loc[bets_df["Betting On"].isin([winner, second, third]), "Show Contrib"].sum()
@@ -279,7 +282,7 @@ scale_factor = (total_pool / total_raw) if total_raw > 0 else 0
 bets_df["Payout"] = bets_df["Raw Payout"] * scale_factor
 bets_df.loc[bets_df["Payout"].isna(), "Payout"] = 0
 
-# Remove rows with 0 payout
+# Remove rows with 0 payout for display
 final_df = bets_df[bets_df["Payout"] > 0].copy()
 
 st.header("Individual Payouts")
