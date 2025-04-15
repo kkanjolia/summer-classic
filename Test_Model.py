@@ -14,11 +14,13 @@ def load_bets():
     else:
         return pd.DataFrame(columns=["Bettor Name", "Betting On", "Bet Type", "Bet Amount"])
 
+# Initialize session state bets
 if "bets" not in st.session_state:
     st.session_state["bets"] = load_bets()
 else:
     st.session_state["bets"] = load_bets()
 
+# Initialize required keys if missing.
 for key in ["current_user", "admin_logged_in", "wagering_closed", "finishing_order"]:
     if key not in st.session_state:
         if key == "current_user":
@@ -31,7 +33,7 @@ for key in ["current_user", "admin_logged_in", "wagering_closed", "finishing_ord
             st.session_state[key] = None
 
 ########################################
-# Title and User Identification
+# Title & User Identification
 ########################################
 st.title("2025 Summer Classic")
 
@@ -41,7 +43,6 @@ all_names = [
     "Jim Alexander", "Joe Canavan", "Mark Leonard", "Pete Koskores",
     "Pete Sullivan", "Kunal Kanjolia", "Mike Leonard", "Ryan Barcome"
 ]
-
 user_choice = st.selectbox("Select Your Name:", all_names, index=0, key="user_select")
 if user_choice != "Select a name...":
     st.session_state.current_user = user_choice
@@ -54,25 +55,23 @@ else:
     st.warning("Please select your name to place bets.")
 
 ########################################
-# Helper Functions for Each-Way Processing
+# Helper Functions for Pool Eligibility
 ########################################
 def effective_contribution(bet_type, amount, pool_category):
     """
-    For each bet, return its effective wager in a given pool:
-    - Win bets: contribute the full bet amount if the bet is a Win bet.
-    - Place bets: contribute the full bet amount if they are placed on the winner (if Win/Place) or on second (if Place).
-    - Show bets: contribute the full bet amount if they are placed on the winner; on second if bet as Place/Show; on third if bet as Show.
+    For this model, the effective wager is simply the full bet amount if the bet qualifies.
     """
-    # In this approach the effective wager is simply the full bet amount if the bet qualifies.
-    # (You might later wish to weight Win bets as 1/3 of the amount in the win pool; here we keep it simple.)
     return amount
 
 def eligible_for_pool(row, pool, finishing_order):
     """
-    Determines whether a given bet (row) qualifies for a pool payout.
-    - For "win": only bets with Bet Type "Win" on the winning horse qualify.
-    - For "place": bets on the winner qualify if bet type in ["Win", "Place"], or bets on the runner-up qualify if bet type is "Place".
-    - For "show": bets on the winner always qualify; bets on the runner-up qualify if bet type in ["Place", "Show"]; bets on the third-place horse qualify if bet type is "Show".
+    Determines whether a bet qualifies for a particular pool:
+    - "win": Only bets with Bet Type "Win" on the winning horse.
+    - "place": Bets on the winner qualify if bet type in ["Win", "Place"];
+              bets on the runner-up qualify if bet type is "Place".
+    - "show": Bets on the winner qualify (any bet type);
+              bets on the runner-up qualify if bet type in ["Place", "Show"];
+              bets on the third place qualify if bet type is "Show".
     """
     if not finishing_order:
         return False
@@ -102,7 +101,7 @@ def eligible_for_pool(row, pool, finishing_order):
     return False
 
 ########################################
-# Admin Login and Controls (Sidebar)
+# Admin Login & Controls (Sidebar)
 ########################################
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "default_password")
 def admin_login():
@@ -187,11 +186,11 @@ if not st.session_state.bets.empty:
     st.write(f"**Place Pool:** ${total_place}")
     st.write(f"**Show Pool:** ${total_show}")
     
-    # For each pool we now use the pure pari-mutuel method:
-    # 1. Only bets that are eligible (per finishing order) contribute their full bet amount.
-    # 2. Payout ratio = (pool total) / (sum of effective wagers among eligible bets).
-    # 3. A bet’s payout from that pool = its effective wager * ratio.
-    # 4. If no eligible bet exists in a pool (i.e. the sum is 0), then refund the entire pool proportionally to all bets of that pool.
+    # For each pool, we use the pure pari-mutuel method:
+    # The effective wager is the full bet amount if the bet qualifies.
+    # If a bet qualifies for a pool, it receives:
+    #    payout = (bet's full wager) * (pool total / sum of full wagers of eligible bets)
+    # If no eligible bet exists (sum=0), then the pool is refunded to all bets in that category.
     df = st.session_state.bets.copy()
     
     # Determine finishing order from admin:
@@ -216,28 +215,28 @@ if not st.session_state.bets.empty:
         second = finish_order["second"]
         third = finish_order["third"]
     
-        # Effective wagers per pool:
-        # Win pool: Only win bets on the winner count.
+        # Effective wager calculations:
+        # Win pool: Only bets with Bet Type "Win" on the winner qualify.
         df["eff_win"] = df.apply(lambda r: r["Bet Amount"] if (r["Betting On"] == winner and r["Bet Type"] == "Win") else 0, axis=1)
-        # Place pool: For the winner, both Win and Place bets; for second, only Place bets.
-        df["eff_place"] = df.apply(lambda r: r["Bet Amount"] if ((r["Betting On"] == winner and r["Bet Type"] in ["Win", "Place"]) or 
-                                                                 (r["Betting On"] == second and r["Bet Type"] == "Place"))
+        # Place pool: For the winner, both Win and Place bets qualify; for second, only Place bets qualify.
+        df["eff_place"] = df.apply(lambda r: r["Bet Amount"] if ((r["Betting On"] == winner and r["Bet Type"] in ["Win", "Place"]) or
+                                                                (r["Betting On"] == second and r["Bet Type"] == "Place"))
                                     else 0, axis=1)
-        # Show pool: For the winner, all bets; for second, if bet as Place or Show; for third, only Show.
-        df["eff_show"] = df.apply(lambda r: r["Bet Amount"] if ((r["Betting On"] == winner) or 
-                                                               (r["Betting On"] == second and r["Bet Type"] in ["Place", "Show"]) or 
+        # Show pool: For the winner, all bets qualify; for second, if bet as Place or Show; for third, if bet as Show.
+        df["eff_show"] = df.apply(lambda r: r["Bet Amount"] if ((r["Betting On"] == winner) or
+                                                               (r["Betting On"] == second and r["Bet Type"] in ["Place", "Show"]) or
                                                                (r["Betting On"] == third and r["Bet Type"] == "Show"))
                                    else 0, axis=1)
-        
+    
         total_eff_win = df["eff_win"].sum()
         total_eff_place = df["eff_place"].sum()
         total_eff_show = df["eff_show"].sum()
-        
-        # Compute payout ratios:
+    
+        # Compute payout ratios per pool:
         if total_eff_win > 0:
             win_ratio = total_win / total_eff_win
         else:
-            # if no eligible win bet, refund all win bets (all with Bet Type "Win")
+            # If no eligible win bet, refund all Win bets
             win_mask = df["Bet Type"] == "Win"
             total_win_amount = df.loc[win_mask, "Bet Amount"].sum()
             win_ratio = total_win / total_win_amount if total_win_amount > 0 else 0
@@ -245,36 +244,36 @@ if not st.session_state.bets.empty:
         if total_eff_place > 0:
             place_ratio = total_place / total_eff_place
         else:
-            place_mask = df["Bet Type"]=="Place"
+            place_mask = df["Bet Type"] == "Place"
             total_place_amount = df.loc[place_mask, "Bet Amount"].sum()
             place_ratio = total_place / total_place_amount if total_place_amount > 0 else 0
         
         if total_eff_show > 0:
             show_ratio = total_show / total_eff_show
         else:
-            show_mask = df["Bet Type"]=="Show"
+            show_mask = df["Bet Type"] == "Show"
             total_show_amount = df.loc[show_mask, "Bet Amount"].sum()
             show_ratio = total_show / total_show_amount if total_show_amount > 0 else 0
         
-        # Individual pool payouts:
+        # Compute individual pool payouts:
         df["win_payout"] = df["eff_win"] * win_ratio
         df["place_payout"] = df["eff_place"] * place_ratio
         df["show_payout"] = df["eff_show"] * show_ratio
         
-        # Final payout is the sum of the pool payouts.
+        # Final payout is the sum across pools.
         df["Final Payout"] = df["win_payout"] + df["place_payout"] + df["show_payout"]
-        
-        # Filter out bets that get no payout.
+    
+        # Filter to only include bets that receive a payout.
         final_df = df[df["Final Payout"] > 0].copy()
-        
+    
         st.header("Individual Payouts (Final)")
-        st.markdown("Final breakdown per wager (only showing bets with a Final Payout):")
+        st.markdown("Final breakdown per wager (only bets with a positive payout are shown):")
         st.dataframe(final_df[[
             "Bettor Name", "Betting On", "Bet Type", "Bet Amount",
             "eff_win", "eff_place", "eff_show",
             "win_payout", "place_payout", "show_payout", "Final Payout"
         ]])
-        
+    
         st.write(f"**Total Wagered:** ${total_pool:.2f}")
         tot_paid = final_df["Final Payout"].sum()
         st.write(f"**Total Paid Out:** ${tot_paid:.2f}")
