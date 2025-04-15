@@ -393,3 +393,4 @@ if not st.session_state.bets.empty:
         st.write("No finishing order set by the admin.")
 else:
     st.write("No bets placed yet.")
+    
