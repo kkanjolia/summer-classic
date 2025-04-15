@@ -19,7 +19,6 @@ if "bets" not in st.session_state:
 else:
     st.session_state["bets"] = load_bets()
 
-# Initialize session state keys if not set.
 if "current_user" not in st.session_state:
     st.session_state["current_user"] = None
 if "admin_logged_in" not in st.session_state:
@@ -56,8 +55,8 @@ else:
 def effective_contribution(bet_type, amount, pool_category):
     """
     Splits each bet into contributions for the Win, Place, and Show pools:
-      - Win bet: amount/3 to Win, amount/3 to Place, amount/3 to Show.
-      - Place bet: half to Place, half to Show.
+      - Win bet: 1/3 to Win, 1/3 to Place, 1/3 to Show.
+      - Place bet: 50% to Place, 50% to Show.
       - Show bet: 100% to Show.
     """
     if bet_type == "Win":
@@ -164,7 +163,7 @@ if not st.session_state.bets.empty:
     st.write(f"**Place Pool:** ${total_place}")
     st.write(f"**Show Pool:** ${total_show}")
     
-    # Calculate effective (split) contributions
+    # Effective (split) contributions
     df = st.session_state.bets.copy()
     df["Win Contrib"] = df.apply(lambda r: effective_contribution(r["Bet Type"], r["Bet Amount"], "Win"), axis=1)
     df["Place Contrib"] = df.apply(lambda r: effective_contribution(r["Bet Type"], r["Bet Amount"], "Place"), axis=1)
@@ -187,8 +186,8 @@ if not st.session_state.bets.empty:
             aggfunc="sum",
             fill_value=0
         ).reset_index()
-        summary.columns.name = None  # Remove hierarchical column names.
-        # Ensure the needed columns exist and rename them.
+        summary.columns.name = None
+        # Ensure columns exist and rename them
         if "Win" in summary.columns:
             summary.rename(columns={"Win": "Total Bet Win"}, inplace=True)
         else:
@@ -204,7 +203,6 @@ if not st.session_state.bets.empty:
         summary["Payout Ratio Win"] = summary["Total Bet Win"].apply(lambda x: (total_win / x) if x > 0 else 0)
         summary["Payout Ratio Place"] = summary["Total Bet Place"].apply(lambda x: (total_place / x) if x > 0 else 0)
         summary["Payout Ratio Show"] = summary["Total Bet Show"].apply(lambda x: (total_show / x) if x > 0 else 0)
-        # Order columns as desired.
         cols = ["Betting On", "Total Bet Win", "Total Bet Place", "Total Bet Show",
                 "Payout Ratio Win", "Payout Ratio Place", "Payout Ratio Show"]
         summary = summary[cols]
@@ -238,99 +236,78 @@ if not st.session_state.bets.empty:
             winner = second = third = None
     
     if winner:
+        # Compute eligible effective sums for each pool based on finishing order.
         weff = df.loc[df["Betting On"] == winner, "Win Contrib"].sum()
         peff = df.loc[df["Betting On"].isin([winner, second]), "Place Contrib"].sum()
         seff = df.loc[df["Betting On"].isin([winner, second, third]), "Show Contrib"].sum()
     
-        # Start with the full effective pools.
-        wpool_eff = tw_eff
-        ppool_eff = tp_eff
-        spool_eff = ts_eff
+        # For each pool, if there are eligible contributions, set raw ratio.
+        raw_win_ratio = (total_win / weff) if weff > 0 else 0
+        raw_place_ratio = (total_place / peff) if peff > 0 else 0
+        raw_show_ratio = (total_show / seff) if seff > 0 else 0
     
-        pools = [
-            {"name": "Win", "pool": tw_eff, "eligible": weff},
-            {"name": "Place", "pool": tp_eff, "eligible": peff},
-            {"name": "Show", "pool": ts_eff, "eligible": seff}
-        ]
-        no_winner_pools = [p for p in pools if p["eligible"] == 0 and p["pool"] > 0]
-        yes_winner_pools = [p for p in pools if p["eligible"] > 0]
-        extra_funds = sum(p["pool"] for p in no_winner_pools)
-        sum_winner_pools = sum(p["pool"] for p in yes_winner_pools)
+        # Calculate any unclaimed funds.
+        unclaimed_win = total_win if weff == 0 else 0
+        unclaimed_place = total_place if peff == 0 else 0
+        unclaimed_show = total_show if seff == 0 else 0
+        total_unclaimed = unclaimed_win + unclaimed_place + unclaimed_show
     
-        if extra_funds > 0 and sum_winner_pools > 0:
-            for p in yes_winner_pools:
-                share = p["pool"] / sum_winner_pools
-                addition = extra_funds * share
-                if p["name"] == "Win":
-                    wpool_eff += addition
-                elif p["name"] == "Place":
-                    ppool_eff += addition
-                elif p["name"] == "Show":
-                    spool_eff += addition
-            for p in no_winner_pools:
-                if p["name"] == "Win":
-                    wpool_eff = 0
-                elif p["name"] == "Place":
-                    ppool_eff = 0
-                elif p["name"] == "Show":
-                    spool_eff = 0
-    
-        st.write(f"**Effective Win Pool (post-redistribution):** ${wpool_eff:.2f}")
-        st.write(f"**Effective Place Pool (post-redistribution):** ${ppool_eff:.2f}")
-        st.write(f"**Effective Show Pool (post-redistribution):** ${spool_eff:.2f}")
-    
-        # Calculate final payout ratios (pure pari-mutuel, no additional scaling).
-        win_ratio = (wpool_eff / weff) if weff > 0 else 0
-        place_ratio = (ppool_eff / peff) if peff > 0 else 0
-        show_ratio = (spool_eff / seff) if seff > 0 else 0
-    
-        st.write("**Final Win Ratio:**", win_ratio)
-        st.write("**Final Place Ratio:**", place_ratio)
-        st.write("**Final Show Ratio:**", show_ratio)
-    
-        # Final payout calculation per bet.  
-        # For example, if a bet on the winning horse is a "Win" bet, it collects from win, place, and show pools.
+        # Define the final payout for each bet. It equals the raw payout from eligible pools plus an extra share
+        # of any unclaimed funds, distributed pro rata based on the bet's amount relative to the total pool.
         def calculate_payout(row):
-            pay = 0.0
+            raw_win = 0
+            raw_place = 0
+            raw_show = 0
+            # Only pay the portions where the bet is eligible:
             if row["Betting On"] == winner:
                 if row["Bet Type"] == "Win":
-                    pay = row["Win Contrib"] * win_ratio + row["Place Contrib"] * place_ratio + row["Show Contrib"] * show_ratio
+                    raw_win = row["Win Contrib"] * raw_win_ratio
+                    raw_place = row["Place Contrib"] * raw_place_ratio
+                    raw_show = row["Show Contrib"] * raw_show_ratio
                 elif row["Bet Type"] == "Place":
-                    pay = row["Place Contrib"] * place_ratio + row["Show Contrib"] * show_ratio
+                    raw_place = row["Place Contrib"] * raw_place_ratio
+                    raw_show = row["Show Contrib"] * raw_show_ratio
                 elif row["Bet Type"] == "Show":
-                    pay = row["Show Contrib"] * show_ratio
+                    raw_show = row["Show Contrib"] * raw_show_ratio
             elif row["Betting On"] == second:
                 if row["Bet Type"] == "Place":
-                    pay = row["Place Contrib"] * place_ratio + row["Show Contrib"] * show_ratio
+                    raw_place = row["Place Contrib"] * raw_place_ratio
+                    raw_show = row["Show Contrib"] * raw_show_ratio
                 elif row["Bet Type"] == "Show":
-                    pay = row["Show Contrib"] * show_ratio
+                    raw_show = row["Show Contrib"] * raw_show_ratio
             elif row["Betting On"] == third:
                 if row["Bet Type"] == "Show":
-                    pay = row["Show Contrib"] * show_ratio
-            return pay
+                    raw_show = row["Show Contrib"] * raw_show_ratio
+            raw_total = raw_win + raw_place + raw_show
+            extra = (row["Bet Amount"] / total_pool) * total_unclaimed
+            return raw_total + extra
+
+        df["Final Payout"] = df.apply(calculate_payout, axis=1)
     
-        df["Raw Payout"] = df.apply(calculate_payout, axis=1)
-        total_raw = df["Raw Payout"].sum()
-        if total_raw > 0:
-            scale_factor = total_pool / total_raw
-        else:
-            scale_factor = 0
-        # Create a column for Scale Factor Adjustment = Raw Payout * (scale_factor - 1)
-        df["Scale Factor Adj"] = df["Raw Payout"] * (scale_factor - 1)
-        df["Total Payout"] = df["Raw Payout"] * scale_factor   # This equals Raw Payout + Scale Factor Adj
+        # Check: The sum of individual Final Payouts should equal total_pool.
+        tot_raw = df["Final Payout"].sum()
     
-        final_df = df[df["Total Payout"] > 0].copy()
-    
+        final_df = df[df["Final Payout"] > 0].copy()
         st.header("Individual Payouts (Final)")
-        st.markdown("Columns show: Raw Payout, Scale Factor Adj, and Total Payout")
+        st.markdown("The table below breaks out the payout into Raw Payout, Scale Factor Adjustment, and Total Payout.")
+        # Define Scale Factor Adjustment column: since extra was already added, here we can compute it as Final Payout - Raw Portion.
+        # We'll compute the Raw Portion as the sum of win/place/show contributions calculated above.
+        df["Raw Portion"] = df.apply(lambda r: (
+            (r["Win Contrib"] * raw_win_ratio if (r["Betting On"] == winner and r["Bet Type"]=="Win") else 0) +
+            (r["Place Contrib"] * raw_place_ratio if ((r["Betting On"] in [winner, second]) and r["Bet Type"] in ["Win", "Place"]) else 0) +
+            (r["Show Contrib"] * raw_show_ratio if (r["Betting On"] in [winner, second, third] and r["Bet Type"] in ["Win", "Place", "Show"]) else 0)
+        ), axis=1)
+        df["Scale Factor Adj"] = df["Final Payout"] - df["Raw Portion"]
+    
+        final_df = df[df["Final Payout"] > 0].copy()
         st.dataframe(final_df[[
             "Bettor Name", "Betting On", "Bet Type", "Bet Amount",
             "Win Contrib", "Place Contrib", "Show Contrib",
-            "Raw Payout", "Scale Factor Adj", "Total Payout"
+            "Raw Portion", "Scale Factor Adj", "Final Payout"
         ]])
     
         tot_pool_amt = st.session_state.bets["Bet Amount"].sum()
-        tot_paid = final_df["Total Payout"].sum()
+        tot_paid = final_df["Final Payout"].sum()
         st.write(f"**Total Wagered:** ${tot_pool_amt:.2f}")
         st.write(f"**Total Paid Out:** ${tot_paid:.2f}")
     else:
