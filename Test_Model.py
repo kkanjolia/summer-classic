@@ -19,6 +19,7 @@ if "bets" not in st.session_state:
 else:
     st.session_state["bets"] = load_bets()
 
+# Initialize keys if missing.
 for key in ["current_user", "admin_logged_in", "wagering_closed", "finishing_order"]:
     if key not in st.session_state:
         if key == "current_user":
@@ -74,9 +75,9 @@ def effective_contribution(bet_type, amount, pool_category):
 def eligible_for_pool(row, pool, finishing_order, extended_win=False):
     """
     Determines if a bet (row) is eligible for a given pool.
-    For pool "win": only Win bets on the winning horse (no extended eligibility per instructions).
-    For "place": bets on the winner (if Win or Place) and on second (if Place).
-    For "show": bets on the winner; bets on second if bet as Place/Show; bets on third if bet as Show.
+    For pool "win": only Win bets on the winning horse are eligible.
+    For "place": bets on the winner (if Win or Place) and on second (if Place) are eligible.
+    For "show": bets on the winner; bets on second if bet as Place/Show; bets on third if bet as Show are eligible.
     """
     if not finishing_order:
         return False
@@ -299,13 +300,12 @@ if not st.session_state.bets.empty:
                 total_claimed = df.loc[mask_eligible, raw_col].sum()
                 unclaimed = pool_total - total_claimed
                 if total_claimed == 0:
-                    mask_extra = df[df["Bet Type"]=="Win"]
+                    mask_extra = (df["Bet Type"]=="Win")
                 else:
-                    mask_extra = mask_eligible & (df[raw_col] == 0)
+                    mask_extra = mask_eligible & df[raw_col].eq(0)
                 total_weight = df.loc[mask_extra, "Bet Amount"].sum() if not df.loc[mask_extra, "Bet Amount"].empty else 0
                 if total_weight > 0:
-                    df[extra_col] = df.apply(lambda r: (r["Bet Amount"] / total_weight * unclaimed)
-                                              if (r[eligible_flag] and r[raw_col] == 0) else 0, axis=1)
+                    df[extra_col] = df.apply(lambda r: (r["Bet Amount"] / total_weight * unclaimed) if (r[eligible_flag] and r[raw_col]==0) else 0, axis=1)
                 else:
                     df[extra_col] = 0
                 df[final_col] = df[raw_col] + df[extra_col]
@@ -329,10 +329,10 @@ if not st.session_state.bets.empty:
             mask_eligible = df[eligible_flag]
             total_claimed = df.loc[mask_eligible, raw_col].sum()
             unclaimed = pool_total - total_claimed
-            mask_extra = mask_eligible & (df[raw_col] == 0)
+            mask_extra = mask_eligible & df[raw_col].eq(0)
             total_weight = df.loc[mask_extra, "Bet Amount"].sum() if not df.loc[mask_extra, "Bet Amount"].empty else 0
             if total_weight > 0:
-                df[extra_col] = df.apply(lambda r: (r["Bet Amount"] / total_weight * unclaimed) if (r[eligible_flag] and r[raw_col] == 0) else 0, axis=1)
+                df[extra_col] = df.apply(lambda r: (r["Bet Amount"] / total_weight * unclaimed) if (r[eligible_flag] and r[raw_col]==0) else 0, axis=1)
             else:
                 df[extra_col] = 0
             df[final_col] = df[raw_col] + df[extra_col]
