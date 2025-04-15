@@ -187,7 +187,6 @@ if not st.session_state.bets.empty:
             fill_value=0
         ).reset_index()
         summary.columns.name = None
-        # Ensure columns exist and rename them.
         if "Win" in summary.columns:
             summary.rename(columns={"Win": "Total Bet Win"}, inplace=True)
         else:
@@ -236,7 +235,7 @@ if not st.session_state.bets.empty:
             winner = second = third = None
     
     if winner:
-        # Calculate eligible contributions for the finishing horses
+        # Calculate eligible contributions for each pool
         weff = df.loc[df["Betting On"] == winner, "Win Contrib"].sum()
         peff = df.loc[df["Betting On"].isin([winner, second]), "Place Contrib"].sum()
         seff = df.loc[df["Betting On"].isin([winner, second, third]), "Show Contrib"].sum()
@@ -275,18 +274,21 @@ if not st.session_state.bets.empty:
         df["Raw Payout"] = df.apply(calculate_raw_payout, axis=1)
         total_raw = df["Raw Payout"].sum()
     
-        # Instead of using pool differences, compute unclaimed funds as:
+        # Compute the total unclaimed funds.
         total_unclaimed = total_pool - total_raw
-        # Distribute extra funds pro rata based on the original bet amounts:
-        df["Extra Adj"] = df.apply(lambda r: (r["Bet Amount"] / total_pool) * total_unclaimed, axis=1)
     
-        # Final payout is the sum of raw payout and extra adjustment.
+        # Distribute unclaimed funds only to bets that had no Raw Payout from their eligible pool.
+        # First, identify bets with zero raw payout.
+        df["Extra Adj"] = df.apply(lambda r: (r["Bet Amount"] / total_pool) * total_unclaimed
+                                   if r["Raw Payout"] == 0 else 0, axis=1)
+    
+        # Final Payout = Raw Payout + Extra Adjustment.
         df["Final Payout"] = df["Raw Payout"] + df["Extra Adj"]
     
         final_df = df[df["Final Payout"] > 0].copy()
     
         st.header("Individual Payouts (Final)")
-        st.markdown("The table below breaks out the payout into Raw Payout, Extra Adj, and Final Payout.")
+        st.markdown("The table below shows for each wager: the Raw Payout, Extra Adj (pro rata extra), and Final Payout.")
         st.dataframe(final_df[[
             "Bettor Name", "Betting On", "Bet Type", "Bet Amount",
             "Win Contrib", "Place Contrib", "Show Contrib",
