@@ -73,10 +73,11 @@ def effective_contribution(bet_type, amount, pool_category):
 
 def eligible_for_pool(row, pool, finishing_order):
     """
-    Determines if a bet (row) is eligible for a pool based on the finishing order.
-    - For pool "win": only Win bets on the winning horse.
-    - For pool "place": bets on the winner (if Win or Place) and on second (if Place).
-    - For pool "show": bets on the winner; bets on second if bet as Place/Show; bets on third if bet as Show.
+    Determines if a bet (row) is eligible for a given pool according to finishing order.
+    - For pool "win": normally only Win bets on the winning horse;
+       if none exist for the winning horse, then extended eligibility is applied to bets on the winning horse with bet type in {"Place","Show"}.
+    - For pool "place": bets on the winning horse (if bet as Win or Place) and bets on the second place (if bet as Place) are eligible.
+    - For pool "show": bets on the winner (any type), on the second (if bet as Place/Show), and on the third (if bet as Show) are eligible.
     """
     if not finishing_order:
         return False
@@ -86,7 +87,11 @@ def eligible_for_pool(row, pool, finishing_order):
     bt = row["Bet Type"]
     outcome = row["Betting On"]
     if pool == "win":
-        return (outcome == win_horse and bt == "Win")
+        # Standard eligibility for win: must be a "Win" bet on the winner.
+        if outcome == win_horse and bt == "Win":
+            return True
+        # If no one bet "Win" on the winner, then extend eligibility to bets on winner with Place/Show.
+        return False
     elif pool == "place":
         if outcome == win_horse:
             return bt in ["Win", "Place"]
@@ -200,7 +205,7 @@ if not st.session_state.bets.empty:
     st.write(f"**Place Pool:** ${total_place}")
     st.write(f"**Show Pool:** ${total_show}")
     
-    # Compute effective contributions for each bet.
+    # Compute effective contributions
     df = st.session_state.bets.copy()
     df["Win Contrib"] = df.apply(lambda r: effective_contribution(r["Bet Type"], r["Bet Amount"], "Win"), axis=1)
     df["Place Contrib"] = df.apply(lambda r: effective_contribution(r["Bet Type"], r["Bet Amount"], "Place"), axis=1)
@@ -309,13 +314,13 @@ if not st.session_state.bets.empty:
                 eligible_flag = "show_eligible"
                 ratio_val = raw_show_ratio
             
-            # 1) Raw payout for eligible bets.
+            # 1) Compute raw payout for eligible bets.
             df[raw_col] = df.apply(lambda r: r[contrib_col] * ratio_val if r[eligible_flag] else 0, axis=1)
-            # 2) Unclaimed funds in this pool.
+            # 2) Compute unclaimed funds in this pool.
             mask_eligible = df[eligible_flag]
             total_claimed = df.loc[mask_eligible, raw_col].sum()
             unclaimed = pool_total - total_claimed
-            # 3) Distribute extra funds only to eligible bets with exactly 0 raw payout.
+            # 3) Distribute extra funds only to eligible bets with exactly 0 raw payout (using a strict check).
             mask_zero = mask_eligible & (df[raw_col] == 0)
             total_weight = df.loc[mask_zero, "Bet Amount"].sum()
             if total_weight > 0:
@@ -335,11 +340,11 @@ if not st.session_state.bets.empty:
         df["Extra Adj"] = df["win_extra"] + df["place_extra"] + df["show_extra"]
         df["Final Payout"] = df["win_final"] + df["place_final"] + df["show_final"]
     
-        # Remove rows with zero Final Payout.
+        # Filter out any rows with zero Final Payout.
         final_df = df[df["Final Payout"] > 0].copy()
     
         st.header("Individual Payouts (Final)")
-        st.markdown("Breakdown per wager (only showing bets with a Final Payout):")
+        st.markdown("Breakdown per wager (only displaying bets with Final Payout > 0):")
         st.dataframe(final_df[[
             "Bettor Name", "Betting On", "Bet Type", "Bet Amount",
             "Win Contrib", "Place Contrib", "Show Contrib",
