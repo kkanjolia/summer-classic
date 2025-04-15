@@ -68,7 +68,7 @@ def effective_contribution(bet_type, amount, pool_category):
 def eligible_for_pool(row, pool, finishing_order):
     """
     Determines if a bet is eligible for a given pool.
-      • Win: Only Win bets on the winning horse.
+      • Win: Only Win bets on the finishing-order winner.
       • Place: Bets on the winner (if Win or Place) or on the runner-up (if Place).
       • Show: Bets on the winner (all types); bets on the runner-up if bet as Win/Place/Show; bets on third if bet as Show.
     """
@@ -281,26 +281,35 @@ if not st.session_state.bets.empty:
         raw_place_ratio = (total_place / eligible_place_total) if eligible_place_total > 0 else 0
         raw_show_ratio = (total_show / eligible_show_total) if eligible_show_total > 0 else 0
     
-        # Payout function: distribute the entire pool among eligible bets.
-        def compute_pool_payout(df, pool, pool_total, eligible_mask, contrib_col, fallback_mask):
+        # Compute pool payout ensuring 100% distribution.
+        def compute_pool_payout(df, pool, pool_total, eligible_mask, contrib_col):
+            # If no bets are eligible by our standard mask, fall back to all bets of that type.
+            if df.loc[eligible_mask].empty:
+                if pool == "win":
+                    eligible_mask = df["Bet Type"] == "Win"
+                elif pool == "place":
+                    eligible_mask = df["Bet Type"] == "Place"
+                elif pool == "show":
+                    eligible_mask = df["Bet Type"] == "Show"
+            
             total_eff = df.loc[eligible_mask, contrib_col].sum()
             if total_eff > 0:
                 ratio = pool_total / total_eff
                 df.loc[eligible_mask, pool + "_payout_raw"] = df.loc[eligible_mask, contrib_col] * ratio
             else:
-                total_fb = df.loc[fallback_mask, "Bet Amount"].sum()
+                total_fb = df.loc[df["Bet Type"] == pool.capitalize(), "Bet Amount"].sum()
                 ratio = pool_total / total_fb if total_fb > 0 else 0
-                df.loc[fallback_mask, pool + "_payout_raw"] = df.loc[fallback_mask, "Bet Amount"] * ratio
-            # Calculate remainder:
+                df.loc[df["Bet Type"] == pool.capitalize(), pool + "_payout_raw"] = df.loc[df["Bet Type"] == pool.capitalize(), "Bet Amount"] * ratio
+            
+            # Remainder distribution: any remaining funds (pool_total - sum of raw payouts)
             raw_total = df[pool + "_payout_raw"].sum()
             remainder = pool_total - raw_total
             if total_eff > 0:
-                # Distribute remainder proportionally among eligible bets.
-                df.loc[eligible_mask, pool + "_payout_extra"] = df.loc[eligible_mask, contrib_col] / total_eff * remainder
+                df.loc[eligible_mask, pool + "_payout_extra"] = (df.loc[eligible_mask, contrib_col] / total_eff) * remainder
             else:
                 df[pool + "_payout_extra"] = 0
             df[pool + "_payout_final"] = df[pool + "_payout_raw"].fillna(0) + df[pool + "_payout_extra"].fillna(0)
-            # Scale so the sum exactly equals pool_total.
+            # Final scaling to ensure total exactly equals pool_total
             final_sum = df[pool + "_payout_final"].sum()
             if final_sum != 0:
                 scale = pool_total / final_sum
@@ -309,10 +318,10 @@ if not st.session_state.bets.empty:
             df[pool + "_payout_final"] = df[pool + "_payout_final"] * scale
             return df
         
-        # Fallback: use eligible mask.
-        df = compute_pool_payout(df, "win", total_win, win_mask, "Win Contrib", win_mask)
-        df = compute_pool_payout(df, "place", total_place, place_mask, "Place Contrib", place_mask)
-        df = compute_pool_payout(df, "show", total_show, show_mask, "Show Contrib", show_mask)
+        # Compute payouts for each pool.
+        df = compute_pool_payout(df, "win", total_win, win_mask, "Win Contrib")
+        df = compute_pool_payout(df, "place", total_place, place_mask, "Place Contrib")
+        df = compute_pool_payout(df, "show", total_show, show_mask, "Show Contrib")
     
         df["Final Payout"] = df["win_payout_final"] + df["place_payout_final"] + df["show_payout_final"]
     
