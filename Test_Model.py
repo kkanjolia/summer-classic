@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import os
 from datetime import datetime, timezone
-from io import BytesIO
 
 ########################################
 # Session State & Persistence Setup
@@ -202,7 +201,7 @@ if not st.session_state.bets.empty:
     st.write(f"**Place Pool:** ${total_place}")
     st.write(f"**Show Pool:** ${total_show}")
     
-    # Compute effective contributions (using your original split method)
+    # Compute effective contributions for each bet.
     df = st.session_state.bets.copy()
     df["Win Contrib"] = df.apply(lambda r: effective_contribution(r["Bet Type"], r["Bet Amount"], "Win"), axis=1)
     df["Place Contrib"] = df.apply(lambda r: effective_contribution(r["Bet Type"], r["Bet Amount"], "Place"), axis=1)
@@ -273,7 +272,7 @@ if not st.session_state.bets.empty:
         second = finish_order["second"]
         third = finish_order["third"]
     
-        # Mark eligibility for each pool.
+        # For the win pool, only Win bets on the winner are eligible.
         df["win_eligible"] = df.apply(lambda r: (r["Betting On"] == winner and r["Bet Type"] == "Win"), axis=1)
         df["place_eligible"] = df.apply(lambda r: eligible_for_pool(r, "place", finish_order), axis=1)
         df["show_eligible"] = df.apply(lambda r: eligible_for_pool(r, "show", finish_order), axis=1)
@@ -290,9 +289,10 @@ if not st.session_state.bets.empty:
         def compute_pool_payout_adjusted(df, pool, pool_total):
             """
             For each pool:
-              1) Compute raw payouts for eligible bets.
-              2) If total raw payout is 0, refund the entire pool to all bets in that category.
-              3) Else, distribute any unclaimed funds proportionally among eligible bets that got 0 raw payout.
+              1) compute raw payouts for bets that are eligible
+              2) if no raw payouts happened, distribute among all bets of that pool type
+                 (e.g. all Win bets if no Win bet on the winner)
+              3) else, distribute leftover among eligible bets that had raw=0
             """
             if pool == "win":
                 contrib_col = "Win Contrib"
@@ -316,31 +316,30 @@ if not st.session_state.bets.empty:
                 eligible_flag = "show_eligible"
                 ratio_val = raw_show_ratio
             
-            # 1) Compute raw payouts.
-            df[raw_col] = df.apply(lambda r: r[contrib_col] * ratio_val if r[eligible_flag] else 0, axis=1)
+            # 1) compute raw payouts
+            df[raw_col] = df.apply(
+                lambda r: r[contrib_col] * ratio_val if r[eligible_flag] else 0,
+                axis=1
+            )
             
-            # 2) Determine unclaimed funds.
+            # 2) compute unclaimed
+            claimed_mask = df[raw_col] > 0
             total_claimed = df[raw_col].sum()
             unclaimed = pool_total - total_claimed
             
-            # Fallback: if no payout occurred, refund all bets in the category.
-            if total_claimed == 0:
-                if pool == "win":
-                    mask_extra = df["Bet Type"] == "Win"
-                elif pool == "place":
-                    mask_extra = df.apply(lambda r: (r["Betting On"] == winner and r["Bet Type"] in ["Win","Place"]) or 
-                                                      (r["Betting On"] == second and r["Bet Type"]=="Place"), axis=1)
-                else:
-                    mask_extra = df.apply(lambda r: (r["Betting On"] == winner) or 
-                                                      (r["Betting On"] == second and r["Bet Type"] in ["Win","Place","Show"]) or 
-                                                      (r["Betting On"] == third and r["Bet Type"]=="Show"), axis=1)
+            if total_claimed == 0 and pool == "win":
+                # No one bet Win on the winner => distribute entire win pool among ALL Win bets proportionally
+                mask_extra = (df["Bet Type"] == "Win")
             else:
-                mask_extra = df[eligible_flag] & df[raw_col].eq(0)
+                # Normal scenario => distribute among eligible bets with raw=0
+                mask_extra = (df[eligible_flag]) & df[raw_col].eq(0)
             
             total_weight = df.loc[mask_extra, "Bet Amount"].sum()
             if total_weight > 0:
+                # allocate unclaimed proportionally
                 def allocate_extra(row):
                     if mask_extra.loc[row.name]:
+                        # proportion of the unclaimed
                         return row["Bet Amount"] / total_weight * unclaimed
                     else:
                         return 0
@@ -350,12 +349,12 @@ if not st.session_state.bets.empty:
             
             df[final_col] = df[raw_col] + df[extra_col]
             return df
-        
+    
         df = compute_pool_payout_adjusted(df, "win", total_win)
         df = compute_pool_payout_adjusted(df, "place", total_place)
         df = compute_pool_payout_adjusted(df, "show", total_show)
     
-        # Summaries.
+        # Summaries
         df["Raw Payout"] = df["win_raw"] + df["place_raw"] + df["show_raw"]
         df["Extra Adj"] = df["win_extra"] + df["place_extra"] + df["show_extra"]
         df["Final Payout"] = df["win_final"] + df["place_final"] + df["show_final"]
@@ -363,7 +362,7 @@ if not st.session_state.bets.empty:
         final_df = df[df["Final Payout"] > 0].copy()
     
         st.header("Individual Payouts (Final)")
-        st.markdown("Breakdown per wager (only showing bets with a positive payout):")
+        st.markdown("Breakdown per wager (only showing bets with Final Payout > 0):")
         st.dataframe(final_df[[
             "Bettor Name", "Betting On", "Bet Type", "Bet Amount",
             "Win Contrib", "Place Contrib", "Show Contrib",
@@ -372,24 +371,11 @@ if not st.session_state.bets.empty:
             "Raw Payout", "Extra Adj", "Final Payout"
         ]])
     
-        st.write(f"**Total Wagered:** ${total_pool:.2f}")
+        tot_pool_amt = total_pool
         tot_paid = final_df["Final Payout"].sum()
+        st.write(f"**Total Wagered:** ${tot_pool_amt:.2f}")
         st.write(f"**Total Paid Out:** ${tot_paid:.2f}")
-    
-        ########################################
-        # Export to Excel with two sheets
-        ########################################
-        # Prepare Excel export with two sheets:
-        # "WAGER OUTPUT" for admin view (all wagers)
-        # "Results OUTPUT" for final individual payouts
-        output = BytesIO()
-        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-            st.session_state.bets.to_excel(writer, sheet_name="WAGER OUTPUT", index=False)
-            final_df.to_excel(writer, sheet_name="Results OUTPUT", index=False)
-            writer.save()
-        processed_data = output.getvalue()
-        st.download_button("Download Excel File", data=processed_data, file_name="Parimutuel_Results.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    else:
+else:
         st.write("No finishing order set by the admin.")
 else:
     st.write("No bets placed yet.")
