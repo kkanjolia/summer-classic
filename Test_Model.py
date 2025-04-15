@@ -375,7 +375,7 @@ if not st.session_state.bets.empty:
         tot_paid = final_df["Final Payout"].sum()
         st.write(f"**Total Wagered:** ${tot_pool_amt:.2f}")
         st.write(f"**Total Paid Out:** ${tot_paid:.2f}")
-else:
+    else:
         st.write("No finishing order set by the admin.")
-else:
-    st.write("No bets placed yet.")
+    else:
+        st.write("No bets placed yet.")
