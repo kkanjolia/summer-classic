@@ -51,7 +51,7 @@ def delete_bets(ids):
     conn.commit()
     conn.close()
 
-    def delete_all_bets():
+def delete_all_bets():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute('DELETE FROM bets;')
