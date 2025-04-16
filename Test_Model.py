@@ -44,7 +44,7 @@ def insert_bet(bettor_name, betting_on, bet_type, bet_amount):
     conn.close()
 
 def delete_bets(ids):
-    # ids is a list of bet IDs to delete.
+    # 'ids' is a list of bet IDs to delete.
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.executemany('DELETE FROM bets WHERE id=?', [(i,) for i in ids])
@@ -96,9 +96,9 @@ else:
 def effective_contribution(bet_type, amount, pool_category):
     """
     Splits each bet into contributions for each pool:
-      - Win bet: amount is split equally among Win, Place, and Show.
-      - Place bet: half goes to Place and half to Show.
-      - Show bet: 100% goes to Show.
+      - Win: amount is split equally among Win, Place, and Show.
+      - Place: half goes to Place and half to Show.
+      - Show: 100% goes to Show.
     """
     if bet_type == "Win":
         return amount / 3.0
@@ -187,7 +187,7 @@ if st.session_state.admin_logged_in:
 if st.session_state.admin_logged_in:
     st.subheader("Admin: Manage Bets (Delete)")
     if not st.session_state.bets.empty:
-        # Use 'id' column from DB for deletion
+        # Use the 'id' column from the database to select wagers to delete.
         bet_ids = st.session_state.bets["id"].tolist()
         idx_to_delete = st.multiselect("Select wager IDs to delete", bet_ids)
         if st.button("Delete Selected Bets", key="delete_wagers"):
@@ -217,10 +217,18 @@ if (not st.session_state.wagering_closed) and st.session_state.current_user:
         submitted = st.form_submit_button("Submit Bet")
         if submitted:
             insert_bet(st.session_state.current_user, horse, btype, amt)
-            st.session_state.bets = load_bets_from_db()
+            st.session_state.bets = load_bets_from_db()  # Reload bets from SQLite after insertion
             st.success(f"Bet placed: {st.session_state.current_user} bet ${amt} on {horse} ({btype})")
 else:
     st.error("No name selected or wagering is locked; no new bets accepted.")
+
+########################################
+# Debug: List Files and Show DB Content
+########################################
+# Uncomment below lines for debugging (only temporary for verification)
+# import os
+# st.write("Files in working directory:", os.listdir("."))
+# st.write("Bets loaded from DB:", st.session_state.bets)
 
 ########################################
 # Pool Calculations & Detailed Summary
@@ -323,10 +331,10 @@ if not st.session_state.bets.empty:
         raw_place_ratio = (total_place / eligible_place_total) if eligible_place_total > 0 else 0
         raw_show_ratio = (total_show / eligible_show_total) if eligible_show_total > 0 else 0
     
-        # Compute pool payout ensuring 100% distribution.
+        # Compute pool payouts ensuring 100% distribution.
         def compute_pool_payout(df, pool, pool_total, eligible_mask, contrib_col):
             if df.loc[eligible_mask].empty:
-                # Fallback: use all bets of that type.
+                # Fallback: use all bets for this pool type.
                 eligible_mask = df["Bet Type"] == pool.capitalize()
             total_eff = df.loc[eligible_mask, contrib_col].sum()
             if total_eff > 0:
@@ -336,7 +344,8 @@ if not st.session_state.bets.empty:
                 total_fb = df.loc[df["Bet Type"] == pool.capitalize(), "Bet Amount"].sum()
                 ratio = pool_total / total_fb if total_fb > 0 else 0
                 df.loc[df["Bet Type"] == pool.capitalize(), pool + "_payout_raw"] = df.loc[df["Bet Type"] == pool.capitalize(), "Bet Amount"] * ratio
-            # Calculate remainder:
+            
+            # Calculate remainder.
             raw_total = df[pool + "_payout_raw"].sum()
             remainder = pool_total - raw_total
             if total_eff > 0:
@@ -344,7 +353,7 @@ if not st.session_state.bets.empty:
             else:
                 df[pool + "_payout_extra"] = 0
             df[pool + "_payout_final"] = df[pool + "_payout_raw"].fillna(0) + df[pool + "_payout_extra"].fillna(0)
-            # Final scaling to ensure sum equals pool_total.
+            # Final scaling to ensure total equals pool_total.
             final_sum = df[pool + "_payout_final"].sum()
             if final_sum != 0:
                 scale = pool_total / final_sum
