@@ -1,23 +1,66 @@
 import streamlit as st
 import pandas as pd
+import sqlite3
 import os
 from datetime import datetime, timezone
 
 ########################################
-# Session State & Persistence Setup
+# SQLite Persistence Setup
 ########################################
-BETS_FILE = "bets_data.csv"
+DB_FILE = "bets.db"
 
-def load_bets():
-    if os.path.exists(BETS_FILE):
-        return pd.read_csv(BETS_FILE)
-    else:
-        return pd.DataFrame(columns=["Bettor Name", "Betting On", "Bet Type", "Bet Amount"])
+def init_db():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS bets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            bettor_name TEXT,
+            betting_on TEXT,
+            bet_type TEXT,
+            bet_amount REAL
+        )
+    ''')
+    conn.commit()
+    conn.close()
 
+def load_bets_from_db():
+    conn = sqlite3.connect(DB_FILE)
+    df = pd.read_sql_query(
+        "SELECT id, bettor_name AS 'Bettor Name', betting_on AS 'Betting On', bet_type AS 'Bet Type', bet_amount AS 'Bet Amount' FROM bets",
+        conn
+    )
+    conn.close()
+    return df
+
+def insert_bet(bettor_name, betting_on, bet_type, bet_amount):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute('''
+        INSERT INTO bets (bettor_name, betting_on, bet_type, bet_amount)
+        VALUES (?, ?, ?, ?)
+    ''', (bettor_name, betting_on, bet_type, bet_amount))
+    conn.commit()
+    conn.close()
+
+def delete_bets(ids):
+    # ids is a list of bet IDs to delete.
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.executemany('DELETE FROM bets WHERE id=?', [(i,) for i in ids])
+    conn.commit()
+    conn.close()
+
+# Initialize database
+init_db()
+
+########################################
+# Session State Setup: load bets from DB
+########################################
 if "bets" not in st.session_state:
-    st.session_state["bets"] = load_bets()
+    st.session_state["bets"] = load_bets_from_db()
 else:
-    st.session_state["bets"] = load_bets()
+    st.session_state["bets"] = load_bets_from_db()
 
 # Initialize keys if missing.
 for key in ["current_user", "admin_logged_in", "wagering_closed", "finishing_order"]:
@@ -53,9 +96,9 @@ else:
 def effective_contribution(bet_type, amount, pool_category):
     """
     Splits each bet into contributions for each pool:
-      - Win: amount split equally among Win, Place, and Show.
-      - Place: half goes to Place and half to Show.
-      - Show: 100% goes to Show.
+      - Win bet: amount is split equally among Win, Place, and Show.
+      - Place bet: half goes to Place and half to Show.
+      - Show bet: 100% goes to Show.
     """
     if bet_type == "Win":
         return amount / 3.0
@@ -67,7 +110,7 @@ def effective_contribution(bet_type, amount, pool_category):
 
 def eligible_for_pool(row, pool, finishing_order):
     """
-    Determines if a bet is eligible for a given pool.
+    Determines if a bet (row) is eligible for a given pool.
       • Win: Only Win bets on the finishing-order winner.
       • Place: Bets on the winner (if Win or Place) or on the runner-up (if Place).
       • Show: Bets on the winner (all types); bets on the runner-up if bet as Win/Place/Show; bets on third if bet as Show.
@@ -144,12 +187,13 @@ if st.session_state.admin_logged_in:
 if st.session_state.admin_logged_in:
     st.subheader("Admin: Manage Bets (Delete)")
     if not st.session_state.bets.empty:
-        idx_to_delete = st.multiselect("Select wagers to delete", list(st.session_state.bets.index))
+        # Use 'id' column from DB for deletion
+        bet_ids = st.session_state.bets["id"].tolist()
+        idx_to_delete = st.multiselect("Select wager IDs to delete", bet_ids)
         if st.button("Delete Selected Bets", key="delete_wagers"):
             if idx_to_delete:
-                st.session_state.bets.drop(idx_to_delete, inplace=True)
-                st.session_state.bets.reset_index(drop=True, inplace=True)
-                st.session_state.bets.to_csv(BETS_FILE, index=False)
+                delete_bets(idx_to_delete)
+                st.session_state.bets = load_bets_from_db()
                 st.success("Wagers deleted.")
             else:
                 st.error("No wagers selected.")
@@ -172,10 +216,8 @@ if (not st.session_state.wagering_closed) and st.session_state.current_user:
         amt = st.number_input("Bet Amount ($)", min_value=1, step=1, key="bet_amount")
         submitted = st.form_submit_button("Submit Bet")
         if submitted:
-            new_row = pd.DataFrame([[st.session_state.current_user, horse, btype, amt]],
-                                   columns=["Bettor Name", "Betting On", "Bet Type", "Bet Amount"])
-            st.session_state.bets = pd.concat([st.session_state.bets, new_row], ignore_index=True)
-            st.session_state.bets.to_csv(BETS_FILE, index=False)
+            insert_bet(st.session_state.current_user, horse, btype, amt)
+            st.session_state.bets = load_bets_from_db()
             st.success(f"Bet placed: {st.session_state.current_user} bet ${amt} on {horse} ({btype})")
 else:
     st.error("No name selected or wagering is locked; no new bets accepted.")
@@ -283,15 +325,9 @@ if not st.session_state.bets.empty:
     
         # Compute pool payout ensuring 100% distribution.
         def compute_pool_payout(df, pool, pool_total, eligible_mask, contrib_col):
-            # If no bets are eligible by our standard mask, fall back to all bets of that type.
             if df.loc[eligible_mask].empty:
-                if pool == "win":
-                    eligible_mask = df["Bet Type"] == "Win"
-                elif pool == "place":
-                    eligible_mask = df["Bet Type"] == "Place"
-                elif pool == "show":
-                    eligible_mask = df["Bet Type"] == "Show"
-            
+                # Fallback: use all bets of that type.
+                eligible_mask = df["Bet Type"] == pool.capitalize()
             total_eff = df.loc[eligible_mask, contrib_col].sum()
             if total_eff > 0:
                 ratio = pool_total / total_eff
@@ -300,8 +336,7 @@ if not st.session_state.bets.empty:
                 total_fb = df.loc[df["Bet Type"] == pool.capitalize(), "Bet Amount"].sum()
                 ratio = pool_total / total_fb if total_fb > 0 else 0
                 df.loc[df["Bet Type"] == pool.capitalize(), pool + "_payout_raw"] = df.loc[df["Bet Type"] == pool.capitalize(), "Bet Amount"] * ratio
-            
-            # Remainder distribution: any remaining funds (pool_total - sum of raw payouts)
+            # Calculate remainder:
             raw_total = df[pool + "_payout_raw"].sum()
             remainder = pool_total - raw_total
             if total_eff > 0:
@@ -309,7 +344,7 @@ if not st.session_state.bets.empty:
             else:
                 df[pool + "_payout_extra"] = 0
             df[pool + "_payout_final"] = df[pool + "_payout_raw"].fillna(0) + df[pool + "_payout_extra"].fillna(0)
-            # Final scaling to ensure total exactly equals pool_total
+            # Final scaling to ensure sum equals pool_total.
             final_sum = df[pool + "_payout_final"].sum()
             if final_sum != 0:
                 scale = pool_total / final_sum
@@ -318,7 +353,6 @@ if not st.session_state.bets.empty:
             df[pool + "_payout_final"] = df[pool + "_payout_final"] * scale
             return df
         
-        # Compute payouts for each pool.
         df = compute_pool_payout(df, "win", total_win, win_mask, "Win Contrib")
         df = compute_pool_payout(df, "place", total_place, place_mask, "Place Contrib")
         df = compute_pool_payout(df, "show", total_show, show_mask, "Show Contrib")
