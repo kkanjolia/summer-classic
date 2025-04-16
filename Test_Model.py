@@ -40,7 +40,6 @@ def init_db():
 
 def load_bets_from_db():
     conn = get_connection()
-    # pull everything out
     df = pd.read_sql_query(
         """
         SELECT
@@ -182,7 +181,12 @@ if st.session_state.admin_logged_in:
 if st.session_state.admin_logged_in and st.button("Toggle Wagering Lock"):
     st.session_state.wagering_closed = not st.session_state.wagering_closed
 
-st.warning("Betting is closed; no new bets accepted.") if st.session_state.wagering_closed else st.info("Wagering is OPEN.")
+# ─── replaced one‑liner with normal if/else ─────────────────────────────────
+if st.session_state.wagering_closed:
+    st.warning("Betting is closed; no new bets accepted.")
+else:
+    st.info("Wagering is OPEN.")
+# ────────────────────────────────────────────────────────────────────────────
 
 ########################################
 # Admin View: All Wagers
@@ -198,7 +202,7 @@ if st.session_state.admin_logged_in:
     st.subheader("Admin: Delete Bets")
     if not st.session_state.bets.empty:
         bet_ids = st.session_state.bets["id"].tolist()
-        to_del = st.multiselect("Select wager IDs to delete", bet_ids)
+        to_del  = st.multiselect("Select wager IDs to delete", bet_ids)
         if st.button("Delete Selected Bets"):
             delete_bets(to_del)
             st.session_state.bets = load_bets_from_db()
@@ -238,43 +242,31 @@ else:
 if not st.session_state.bets.empty:
     st.header("Total Pool Size")
     total_pool  = st.session_state.bets["Bet Amount"].sum()
-    total_win = st.session_state.bets.query("`Bet Type`=='Win'")["Bet Amount"].sum()
+    total_win   = st.session_state.bets.query("`Bet Type`=='Win'")["Bet Amount"].sum()
     total_place = st.session_state.bets.query("`Bet Type`=='Place'")["Bet Amount"].sum()
     total_show  = st.session_state.bets.query("`Bet Type`=='Show'")["Bet Amount"].sum()
+
     st.write(f"**Total Pool:** ${total_pool:.2f}")
     st.write(f"**Win Pool:** ${total_win:.2f}")
     st.write(f"**Place Pool:** ${total_place:.2f}")
     st.write(f"**Show Pool:** ${total_show:.2f}")
 
-########################################
-# Pool Calculations & Detailed Summary
-########################################
-if not st.session_state.bets.empty:
-    st.header("Total Pool Size")
-    total_pool = st.session_state.bets["Bet Amount"].sum()
-    total_win = st.session_state.bets.loc[st.session_state.bets["Bet Type"]=="Win", "Bet Amount"].sum()
-    total_place = st.session_state.bets.loc[st.session_state.bets["Bet Type"]=="Place", "Bet Amount"].sum()
-    total_show = st.session_state.bets.loc[st.session_state.bets["Bet Type"]=="Show", "Bet Amount"].sum()
-    st.write(f"**Total Pool:** ${total_pool}")
-    st.write(f"**Win Pool:** ${total_win}")
-    st.write(f"**Place Pool:** ${total_place}")
-    st.write(f"**Show Pool:** ${total_show}")
-    
     # Compute effective contributions for each bet.
     df = st.session_state.bets.copy()
-    df["Win Contrib"] = df.apply(lambda r: effective_contribution(r["Bet Type"], r["Bet Amount"], "Win"), axis=1)
+    df["Win Contrib"]   = df.apply(lambda r: effective_contribution(r["Bet Type"], r["Bet Amount"], "Win"), axis=1)
     df["Place Contrib"] = df.apply(lambda r: effective_contribution(r["Bet Type"], r["Bet Amount"], "Place"), axis=1)
-    df["Show Contrib"] = df.apply(lambda r: effective_contribution(r["Bet Type"], r["Bet Amount"], "Show"), axis=1)
-    
+    df["Show Contrib"]  = df.apply(lambda r: effective_contribution(r["Bet Type"], r["Bet Amount"], "Show"), axis=1)
+
     tw_eff = df["Win Contrib"].sum()
     tp_eff = df["Place Contrib"].sum()
     ts_eff = df["Show Contrib"].sum()
-    
+
     st.write("**Effective Win Pool:** $", tw_eff)
     st.write("**Effective Place Pool:** $", tp_eff)
     st.write("**Effective Show Pool:** $", ts_eff)
-    
+
     st.header("Detailed Wager Summary")
+    
     def create_summary():
         summary = st.session_state.bets.pivot_table(
             index="Betting On",
