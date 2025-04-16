@@ -51,6 +51,13 @@ def delete_bets(ids):
     conn.commit()
     conn.close()
 
+    def delete_all_bets():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute('DELETE FROM bets;')
+    conn.commit()
+    conn.close()
+
 # Initialize database
 init_db()
 
@@ -203,6 +210,17 @@ if st.session_state.admin_logged_in:
                 st.error("No wagers selected.")
     else:
         st.info("No wagers to delete.")
+
+        # … existing “Admin: Manage Bets (Delete)” block …
+
+# Bulk‑delete helper:
+if st.session_state.admin_logged_in:
+    st.markdown("---")
+    st.subheader("Admin: Delete All Bets")
+    if st.button("Delete ALL Bets", key="delete_all"):
+        delete_all_bets()
+        st.session_state.bets = load_bets_from_db()
+        st.success("All bets have been wiped from the database.")
 
 ########################################
 # Public Bet Form
