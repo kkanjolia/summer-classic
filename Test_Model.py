@@ -237,6 +237,8 @@ if not st.session_state.wagering_closed and st.session_state.current_user:
             insert_bet(st.session_state.current_user, horse, btype, amt)
             st.session_state["bets"] = load_bets_from_db()
             st.success(f"{st.session_state.current_user} bet ${amt} on {horse} ({btype})")
+            # Force a rerun so newly inserted bets appear in tables
+            st.experimental_rerun()
 else:
     if not st.session_state.current_user:
         st.error("Select your name first.")
