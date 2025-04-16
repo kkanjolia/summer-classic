@@ -62,6 +62,7 @@ if "bets" not in st.session_state:
 else:
     st.session_state["bets"] = load_bets_from_db()
 
+
 # Initialize keys if missing.
 for key in ["current_user", "admin_logged_in", "wagering_closed", "finishing_order"]:
     if key not in st.session_state:
@@ -181,6 +182,9 @@ if st.session_state.admin_logged_in:
     st.subheader("All Wagers (Admin View)")
     st.dataframe(st.session_state.bets)
 
+if st.button("Refresh Bets"):
+    st.session_state.bets = load_bets_from_db()
+    st.write("Bets currently in DB:", st.session_state.bets)
 ########################################
 # Admin: Delete Bets
 ########################################
