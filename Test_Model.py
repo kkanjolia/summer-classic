@@ -265,37 +265,41 @@ if not st.session_state.bets.empty:
 
     st.header("Detailed Wager Summary")
     
-def create_summary(df):
-    summary = df.pivot_table(
-        index="Betting On",
-        columns="Bet Type",
-        values="Bet Amount",
-        aggfunc="sum",
-        fill_value=0
-    ).reset_index()
-    summary.columns.name = None
-    if "Win" in summary.columns:
-        summary.rename(columns={"Win": "Total Bet Win"}, inplace=True)
-    else:
-        summary["Total Bet Win"] = 0
-    if "Place" in summary.columns:
-        summary.rename(columns={"Place": "Total Bet Place"}, inplace=True)
-    else:
-        summary["Total Bet Place"] = 0
-    if "Show" in summary.columns:
-        summary.rename(columns={"Show": "Total Bet Show"}, inplace=True)
-    else:
-        summary["Total Bet Show"] = 0
-    summary["Payout Ratio Win"] = summary["Total Bet Win"].apply(lambda x: (total_win / x) if x > 0 else 0)
-    summary["Payout Ratio Place"] = summary["Total Bet Place"].apply(lambda x: (total_place / x) if x > 0 else 0)
-    summary["Payout Ratio Show"] = summary["Total Bet Show"].apply(lambda x: (total_show / x) if x > 0 else 0)
-    cols = ["Betting On", "Total Bet Win", "Total Bet Place", "Total Bet Show",
-            "Payout Ratio Win", "Payout Ratio Place", "Payout Ratio Show"]
-    summary = summary[cols]
-    return summary
+    def create_summary(df):
+        summary = df.pivot_table(
+            index="Betting On",
+            columns="Bet Type",
+            values="Bet Amount",
+            aggfunc="sum",
+            fill_value=0
+        ).reset_index()
+        summary.columns.name = None
+        if "Win" in summary.columns:
+            summary.rename(columns={"Win": "Total Bet Win"}, inplace=True)
+        else:
+            summary["Total Bet Win"] = 0
+        if "Place" in summary.columns:
+            summary.rename(columns={"Place": "Total Bet Place"}, inplace=True)
+        else:
+            summary["Total Bet Place"] = 0
+        if "Show" in summary.columns:
+            summary.rename(columns={"Show": "Total Bet Show"}, inplace=True)
+        else:
+            summary["Total Bet Show"] = 0
+        summary["Payout Ratio Win"] = summary["Total Bet Win"].apply(lambda x: (total_win / x) if x > 0 else 0)
+        summary["Payout Ratio Place"] = summary["Total Bet Place"].apply(lambda x: (total_place / x) if x > 0 else 0)
+        summary["Payout Ratio Show"] = summary["Total Bet Show"].apply(lambda x: (total_show / x) if x > 0 else 0)
+        cols = ["Betting On", "Total Bet Win", "Total Bet Place", "Total Bet Show",
+                "Payout Ratio Win", "Payout Ratio Place", "Payout Ratio Show"]
+        summary = summary[cols]
+        # Remove any header-row artifacts, if present
+        summary = summary[summary["Betting On"] != "Betting On"]
+        return summary
     
-summary_df = create_summary(df)
-st.dataframe(summary_df)
+    summary_df = create_summary(df)
+    # DEBUG: inspect loaded DataFrame
+    st.write("DEBUG: Loaded bets DataFrame:", df)
+    st.dataframe(summary_df)
     
     ########################################
     # Finishing Order & Final Payout Calculation
