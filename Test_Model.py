@@ -53,16 +53,9 @@ def load_bets_from_db():
         conn
     )
     conn.close()
-    # ───── FIX #1 ──────────────────────────────────────────────────────────────
-    # ensure that "Bet Amount" is actually a float, never a str
-    df["Bet Amount"] = pd.to_numeric(df["Bet Amount"], errors="coerce").fillna(0.0)
-    # ────────────────────────────────────────────────────────────────────────────
-    # ───── FIX #1.5: drop any erroneous header row inserted as data ─────
-    header_mask = (
-        (df["Bettor Name"] == "Bettor Name") &
-        (df["Betting On"] == "Betting On") &
-        (df["Bet Type"]     == "Bet Type")
-    )
+    # ensure Bet Amount is numeric so .sum() returns a float
+    df["Bet Amount"] = pd.to_numeric(df["Bet Amount"], errors="coerce")
+    
     return df
 
 def insert_bet(bettor_name, betting_on, bet_type, bet_amount):
