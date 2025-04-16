@@ -43,36 +43,26 @@ def load_bets_from_db():
     conn = get_connection()
     try:
         with conn.cursor() as c:
-            c.execute("""
-                SELECT
-                  id,
-                  bettor_name    AS bettor_name,
-                  betting_on     AS betting_on,
-                  bet_type       AS bet_type,
-                  bet_amount     AS bet_amount
-                FROM bets
-            """)
-            rows = c.fetchall()  # this will be a list of dicts
+            c.execute("SELECT id, bettor_name, betting_on, bet_type, bet_amount FROM bets")
+            rows = c.fetchall()
     finally:
         conn.close()
 
-    # build a proper DataFrame
     if rows:
         df = pd.DataFrame(rows)
-        # rename columns to match the rest of your code
         df = df.rename(columns={
-            'bettor_name': 'Bettor Name',
-            'betting_on':  'Betting On',
-            'bet_type':    'Bet Type',
-            'bet_amount':  'Bet Amount',
+            "bettor_name": "Bettor Name",
+            "betting_on":  "Betting On",
+            "bet_type":    "Bet Type",
+            "bet_amount":  "Bet Amount",
         })
+        # <<< HERE: cast Bet Amount to float
+        df["Bet Amount"] = pd.to_numeric(df["Bet Amount"], errors="coerce").fillna(0.0)
     else:
-        # no rows: return an “empty but correctly shaped” DataFrame
-        df = pd.DataFrame(columns=[
-            'id', 'Bettor Name', 'Betting On', 'Bet Type', 'Bet Amount'
-        ])
+        df = pd.DataFrame(columns=["id", "Bettor Name", "Betting On", "Bet Type", "Bet Amount"])
 
     return df
+
     # cast the DECIMAL column to float
     df["Bet Amount"] = pd.to_numeric(df["Bet Amount"], errors="coerce")
     return df
