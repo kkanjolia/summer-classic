@@ -62,11 +62,6 @@ if "bets" not in st.session_state:
 else:
     st.session_state["bets"] = load_bets_from_db()
 
-# TEMPORARY DEBUG: Check current directory and files
-import os
-st.write("Current working directory:", os.getcwd())
-st.write("Files in working directory:", os.listdir("."))
-
 # Initialize keys if missing.
 for key in ["current_user", "admin_logged_in", "wagering_closed", "finishing_order"]:
     if key not in st.session_state:
