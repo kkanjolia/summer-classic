@@ -83,16 +83,6 @@ for key in ["current_user", "admin_logged_in", "wagering_closed", "finishing_ord
     if key not in st.session_state:
         st.session_state[key] = None if key in ["current_user", "finishing_order"] else False
 
-########################################
-# Debug / Verification
-########################################
-st.write("**Debug: where am I?**")
-st.write(" Working directory:", os.getcwd())
-st.write(" Files here:", os.listdir(os.getcwd()))
-st.write(" DB_FILE path:", DB_FILE)
-st.write(" Files in /mnt/data:", os.listdir(DATA_DIR))
-st.write(" Bets loaded from DB:", st.session_state.bets)
-
 # Provide a way to download the current DB
 with open(DB_FILE, "rb") as f:
     data = f.read()
