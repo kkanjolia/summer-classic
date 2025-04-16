@@ -95,7 +95,9 @@ init_db()
 ########################################
 # Session State Setup: single load
 ########################################
-st.session_state["bets"] = load_bets_from_db()
+# Only load from the DB if we haven't already in this session
+if "bets" not in st.session_state:
+    st.session_state["bets"] = load_bets_from_db()
 
 # Initialize other keys
 for key in ["current_user", "admin_logged_in", "wagering_closed", "finishing_order"]:
@@ -233,7 +235,8 @@ if not st.session_state.wagering_closed and st.session_state.current_user:
         amt   = st.number_input("Bet Amount ($)", min_value=1.0, step=1.0)
         if st.form_submit_button("Submit Bet"):
             insert_bet(st.session_state.current_user, horse, btype, amt)
-            st.session_state.bets = load_bets_from_db()
+            st.session_state["bets"] = load_bets_from_db()
+            st.experimental_rerun()
             st.success(f"{st.session_state.current_user} bet ${amt} on {horse} ({btype})")
 else:
     if not st.session_state.current_user:
