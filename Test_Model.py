@@ -4,10 +4,23 @@ import sqlite3
 import os
 from datetime import datetime, timezone
 
+import streamlit as st
+import pandas as pd
+import sqlite3
+import os
+from datetime import datetime, timezone
+
 ########################################
 # SQLite Persistence Setup
 ########################################
-DB_FILE = "bets.db"
+# Pick a data directory: prefer /mnt/data on Streamlit Cloud,
+# otherwise fall back to the current working directory.
+try:
+    DATA_DIR = "/mnt/data"
+    os.makedirs(DATA_DIR, exist_ok=True)
+except Exception:
+    DATA_DIR = os.getcwd()
+DB_FILE = os.path.join(DATA_DIR, "bets.db")
 
 def init_db():
     conn = sqlite3.connect(DB_FILE)
@@ -44,7 +57,6 @@ def insert_bet(bettor_name, betting_on, bet_type, bet_amount):
     conn.close()
 
 def delete_bets(ids):
-    # 'ids' is a list of bet IDs to delete.
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.executemany('DELETE FROM bets WHERE id=?', [(i,) for i in ids])
@@ -64,16 +76,32 @@ init_db()
 ########################################
 # Session State Setup: load bets from DB
 ########################################
-if "bets" not in st.session_state:
-    st.session_state["bets"] = load_bets_from_db()
-else:
-    st.session_state["bets"] = load_bets_from_db()
+st.session_state["bets"] = load_bets_from_db()
 
-
-# Initialize keys if missing.
+# Initialize other keys
 for key in ["current_user", "admin_logged_in", "wagering_closed", "finishing_order"]:
     if key not in st.session_state:
         st.session_state[key] = None if key in ["current_user", "finishing_order"] else False
+
+########################################
+# Debug / Verification
+########################################
+st.write("**Debug: where am I?**")
+st.write(" Working directory:", os.getcwd())
+st.write(" Files here:", os.listdir(os.getcwd()))
+st.write(" DB_FILE path:", DB_FILE)
+st.write(" Files in /mnt/data:", os.listdir(DATA_DIR))
+st.write(" Bets loaded from DB:", st.session_state.bets)
+
+# Provide a way to download the current DB
+with open(DB_FILE, "rb") as f:
+    data = f.read()
+st.download_button(
+    label="Download bets.db",
+    data=data,
+    file_name="bets.db",
+    mime="application/x-sqlite3"
+)
 
 ########################################
 # Title and User Identification
