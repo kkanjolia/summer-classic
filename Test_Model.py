@@ -293,8 +293,6 @@ if not st.session_state.bets.empty:
         cols = ["Betting On", "Total Bet Win", "Total Bet Place", "Total Bet Show",
                 "Payout Ratio Win", "Payout Ratio Place", "Payout Ratio Show"]
         summary = summary[cols]
-        # drop any residual header row
-        summary = summary[summary["Betting On"] != "Betting On"]
         return summary
     
     summary_df = create_summary()
@@ -362,6 +360,7 @@ if not st.session_state.bets.empty:
             else:
                 df[pool + "_payout_extra"] = 0
             df[pool + "_payout_final"] = df[pool + "_payout_raw"].fillna(0) + df[pool + "_payout_extra"].fillna(0)
+            
             # Final scaling to ensure total equals pool_total.
             final_sum = df[pool + "_payout_final"].sum()
             if final_sum != 0:
