@@ -47,6 +47,8 @@ def load_bets_from_db():
         conn
     )
     conn.close()
+    # cast the DECIMAL column to float
+    df["Bet Amount"] = pd.to_numeric(df["Bet Amount"], errors="coerce")
     return df
 
 def insert_bet(bettor_name, betting_on, bet_type, bet_amount):
@@ -84,11 +86,23 @@ if "bets" not in st.session_state:
 else:
     # always refresh from DB on reload
     st.session_state["bets"] = load_bets_from_db()
+    st.session_state["bets"]["Bet Amount"] = st.session_state["bets"]["Bet Amount"].astype(float)
 
 # Initialize other keys
 for key in ["current_user", "admin_logged_in", "wagering_closed", "finishing_order"]:
     if key not in st.session_state:
         st.session_state[key] = None if key in ["current_user", "finishing_order"] else False
+
+        # Initialize session‑state bets
+if "bets" not in st.session_state:
+    st.session_state["bets"] = load_bets_from_db()
+else:
+    st.session_state["bets"] = load_bets_from_db()
+
+# —> force Bet Amount to be numeric
+st.session_state["bets"]["Bet Amount"] = pd.to_numeric(
+    st.session_state["bets"]["Bet Amount"], errors="coerce"
+)
 
 ########################################
 # Title and User Identification
