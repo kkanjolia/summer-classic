@@ -63,6 +63,7 @@ def load_bets_from_db():
         (df["Betting On"] == "Betting On") &
         (df["Bet Type"]     == "Bet Type")
     )
+    df = df[~header_mask]
     return df
 
 def insert_bet(bettor_name, betting_on, bet_type, bet_amount):
