@@ -57,12 +57,12 @@ def load_bets_from_db():
     # ensure that "Bet Amount" is actually a float, never a str
     df["Bet Amount"] = pd.to_numeric(df["Bet Amount"], errors="coerce").fillna(0.0)
     # ────────────────────────────────────────────────────────────────────────────
-        # ───── FIX #1.5 ────────────────────────────────────────────────
-    # Drop any rows where all cell values match the column names (erroneous header rows)
-    header_mask = df.eq(df.columns, axis=1).all(axis=1)
-    if header_mask.any():
-        df = df.loc[~header_mask]
-    # ────────────────────────────────────────────────────────────────
+    # ───── FIX #1.5: drop any erroneous header row inserted as data ─────
+    header_mask = (
+        (df["Bettor Name"] == "Bettor Name") &
+        (df["Betting On"] == "Betting On") &
+        (df["Bet Type"]     == "Bet Type")
+    )
     return df
 
 def insert_bet(bettor_name, betting_on, bet_type, bet_amount):
