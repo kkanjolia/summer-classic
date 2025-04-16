@@ -300,6 +300,8 @@ if not st.session_state.bets.empty:
         cols = ["Betting On", "Total Bet Win", "Total Bet Place", "Total Bet Show",
                 "Payout Ratio Win", "Payout Ratio Place", "Payout Ratio Show"]
         summary = summary[cols]
+        # drop any residual header row
+        summary = summary[summary["Betting On"] != "Betting On"]
         return summary
     
     summary_df = create_summary()
