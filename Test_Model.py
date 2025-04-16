@@ -236,7 +236,6 @@ if not st.session_state.wagering_closed and st.session_state.current_user:
         if st.form_submit_button("Submit Bet"):
             insert_bet(st.session_state.current_user, horse, btype, amt)
             st.session_state["bets"] = load_bets_from_db()
-            st.experimental_rerun()
             st.success(f"{st.session_state.current_user} bet ${amt} on {horse} ({btype})")
 else:
     if not st.session_state.current_user:
