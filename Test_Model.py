@@ -1,72 +1,75 @@
 import streamlit as st
 import pandas as pd
-import sqlite3
-import os
-from datetime import datetime, timezone
-
-import streamlit as st
-import pandas as pd
-import sqlite3
+import pymysql
 import os
 from datetime import datetime, timezone
 
 ########################################
-# SQLite Persistence Setup
+# MySQL Persistence Setup
 ########################################
-# Pick a data directory: prefer /mnt/data on Streamlit Cloud,
-# otherwise fall back to the current working directory.
-try:
-    DATA_DIR = "/mnt/data"
-    os.makedirs(DATA_DIR, exist_ok=True)
-except Exception:
-    DATA_DIR = os.getcwd()
-DB_FILE = os.path.join(DATA_DIR, "bets.db")
+# Connection parameters
+MYSQL_HOST = "sql5.freesqldatabase.com"
+MYSQL_PORT = 3306
+MYSQL_DB = "sql5773659"
+MYSQL_USER = "sql5773659"
+MYSQL_PASSWORD = "3q2JtXGhXL"
+
+def get_connection():
+    return pymysql.connect(
+        host=MYSQL_HOST,
+        user=MYSQL_USER,
+        password=MYSQL_PASSWORD,
+        database=MYSQL_DB,
+        port=MYSQL_PORT,
+        cursorclass=pymysql.cursors.DictCursor
+    )
 
 def init_db():
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS bets (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            bettor_name TEXT,
-            betting_on TEXT,
-            bet_type TEXT,
-            bet_amount REAL
-        )
-    ''')
+    conn = get_connection()
+    with conn.cursor() as c:
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS bets (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                bettor_name VARCHAR(255),
+                betting_on VARCHAR(255),
+                bet_type VARCHAR(50),
+                bet_amount DECIMAL(10,2)
+            )
+        ''')
     conn.commit()
     conn.close()
 
 def load_bets_from_db():
-    conn = sqlite3.connect(DB_FILE)
+    conn = get_connection()
     df = pd.read_sql_query(
-        "SELECT id, bettor_name AS 'Bettor Name', betting_on AS 'Betting On', bet_type AS 'Bet Type', bet_amount AS 'Bet Amount' FROM bets",
+        "SELECT id, bettor_name AS `Bettor Name`, betting_on AS `Betting On`, "
+        "bet_type AS `Bet Type`, bet_amount AS `Bet Amount` FROM bets",
         conn
     )
     conn.close()
     return df
 
 def insert_bet(bettor_name, betting_on, bet_type, bet_amount):
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute('''
-        INSERT INTO bets (bettor_name, betting_on, bet_type, bet_amount)
-        VALUES (?, ?, ?, ?)
-    ''', (bettor_name, betting_on, bet_type, bet_amount))
+    conn = get_connection()
+    with conn.cursor() as c:
+        c.execute('''
+            INSERT INTO bets (bettor_name, betting_on, bet_type, bet_amount)
+            VALUES (%s, %s, %s, %s)
+        ''', (bettor_name, betting_on, bet_type, bet_amount))
     conn.commit()
     conn.close()
 
 def delete_bets(ids):
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.executemany('DELETE FROM bets WHERE id=?', [(i,) for i in ids])
+    conn = get_connection()
+    with conn.cursor() as c:
+        c.executemany('DELETE FROM bets WHERE id=%s', [(i,) for i in ids])
     conn.commit()
     conn.close()
 
 def delete_all_bets():
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute('DELETE FROM bets;')
+    conn = get_connection()
+    with conn.cursor() as c:
+        c.execute('DELETE FROM bets')
     conn.commit()
     conn.close()
 
@@ -76,24 +79,16 @@ init_db()
 ########################################
 # Session State Setup: load bets from DB
 ########################################
-st.session_state["bets"] = load_bets_from_db()
+if "bets" not in st.session_state:
+    st.session_state["bets"] = load_bets_from_db()
+else:
+    # always refresh from DB on reload
+    st.session_state["bets"] = load_bets_from_db()
 
 # Initialize other keys
 for key in ["current_user", "admin_logged_in", "wagering_closed", "finishing_order"]:
     if key not in st.session_state:
         st.session_state[key] = None if key in ["current_user", "finishing_order"] else False
-
-
-
-# Provide a way to download the current DB
-with open(DB_FILE, "rb") as f:
-    data = f.read()
-st.download_button(
-    label="Download bets.db",
-    data=data,
-    file_name="bets.db",
-    mime="application/x-sqlite3"
-)
 
 ########################################
 # Title and User Identification
@@ -122,12 +117,6 @@ else:
 # Helper Functions: Each-Way Processing
 ########################################
 def effective_contribution(bet_type, amount, pool_category):
-    """
-    Splits each bet into contributions for each pool:
-      - Win: amount is split equally among Win, Place, and Show.
-      - Place: half goes to Place and half to Show.
-      - Show: 100% goes to Show.
-    """
     if bet_type == "Win":
         return amount / 3.0
     elif bet_type == "Place":
@@ -137,12 +126,6 @@ def effective_contribution(bet_type, amount, pool_category):
     return 0
 
 def eligible_for_pool(row, pool, finishing_order):
-    """
-    Determines if a bet (row) is eligible for a given pool.
-      • Win: Only Win bets on the finishing-order winner.
-      • Place: Bets on the winner (if Win or Place) or on the runner-up (if Place).
-      • Show: Bets on the winner (all types); bets on the runner-up if bet as Win/Place/Show; bets on third if bet as Show.
-    """
     if not finishing_order:
         return False
     win_horse = finishing_order["winner"]
@@ -209,16 +192,17 @@ if st.session_state.admin_logged_in:
     st.subheader("All Wagers (Admin View)")
     st.dataframe(st.session_state.bets)
 
+# Refresh button
 if st.button("Refresh Bets"):
     st.session_state.bets = load_bets_from_db()
     st.write("Bets currently in DB:", st.session_state.bets)
+
 ########################################
 # Admin: Delete Bets
 ########################################
 if st.session_state.admin_logged_in:
     st.subheader("Admin: Manage Bets (Delete)")
     if not st.session_state.bets.empty:
-        # Use the 'id' column from the database to select wagers to delete.
         bet_ids = st.session_state.bets["id"].tolist()
         idx_to_delete = st.multiselect("Select wager IDs to delete", bet_ids)
         if st.button("Delete Selected Bets", key="delete_wagers"):
@@ -231,10 +215,6 @@ if st.session_state.admin_logged_in:
     else:
         st.info("No wagers to delete.")
 
-        # … existing “Admin: Manage Bets (Delete)” block …
-
-# Bulk‑delete helper:
-if st.session_state.admin_logged_in:
     st.markdown("---")
     st.subheader("Admin: Delete All Bets")
     if st.button("Delete ALL Bets", key="delete_all"):
@@ -249,28 +229,17 @@ if (not st.session_state.wagering_closed) and st.session_state.current_user:
     st.subheader("Place a Bet")
     with st.form("bet_form", clear_on_submit=True):
         st.write(f"**Bettor Name:** {st.session_state.current_user}")
-        horse = st.selectbox("Betting On", [
-            "Anthony Sousa", "Connor Donovan", "Chris Brown", "Jared Joaquin",
-            "Jim Alexander", "Joe Canavan", "Mark Leonard", "Pete Koskores",
-            "Pete Sullivan", "Kunal Kanjolia", "Mike Leonard", "Ryan Barcome"
-        ], key="betting_on")
+        horse = st.selectbox("Betting On", all_names[1:], key="betting_on")
         btype = st.selectbox("Bet Type", ["Win", "Place", "Show"], key="bet_type")
-        amt = st.number_input("Bet Amount ($)", min_value=1, step=1, key="bet_amount")
+        amt = st.number_input("Bet Amount ($)", min_value=1.0, step=1.0, key="bet_amount")
         submitted = st.form_submit_button("Submit Bet")
         if submitted:
             insert_bet(st.session_state.current_user, horse, btype, amt)
-            st.session_state.bets = load_bets_from_db()  # Reload bets from SQLite after insertion
+            st.session_state.bets = load_bets_from_db()
             st.success(f"Bet placed: {st.session_state.current_user} bet ${amt} on {horse} ({btype})")
 else:
     st.error("No name selected or wagering is locked; no new bets accepted.")
 
-########################################
-# Debug: List Files and Show DB Content
-########################################
-# Uncomment below lines for debugging (only temporary for verification)
-# import os
-# st.write("Files in working directory:", os.listdir("."))
-# st.write("Bets loaded from DB:", st.session_state.bets)
 
 ########################################
 # Pool Calculations & Detailed Summary
