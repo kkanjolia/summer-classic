@@ -7,11 +7,10 @@ from datetime import datetime, timezone
 ########################################
 # MySQL Persistence Setup
 ########################################
-# Connection parameters
-MYSQL_HOST = "sql5.freesqldatabase.com"
-MYSQL_PORT = 3306
-MYSQL_DB = "sql5773659"
-MYSQL_USER = "sql5773659"
+MYSQL_HOST     = "sql5.freesqldatabase.com"
+MYSQL_PORT     = 3306
+MYSQL_DB       = "sql5773659"
+MYSQL_USER     = "sql5773659"
 MYSQL_PASSWORD = "3q2JtXGhXL"
 
 def get_connection():
@@ -31,9 +30,9 @@ def init_db():
             CREATE TABLE IF NOT EXISTS bets (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 bettor_name VARCHAR(255),
-                betting_on VARCHAR(255),
-                bet_type VARCHAR(50),
-                bet_amount DECIMAL(10,2)
+                betting_on   VARCHAR(255),
+                bet_type     VARCHAR(50),
+                bet_amount   DECIMAL(10,2)
             )
         ''')
     conn.commit()
@@ -41,30 +40,24 @@ def init_db():
 
 def load_bets_from_db():
     conn = get_connection()
-    try:
-        with conn.cursor() as c:
-            c.execute("SELECT id, bettor_name, betting_on, bet_type, bet_amount FROM bets")
-            rows = c.fetchall()
-    finally:
-        conn.close()
-
-    if rows:
-        df = pd.DataFrame(rows)
-        df = df.rename(columns={
-            "bettor_name": "Bettor Name",
-            "betting_on":  "Betting On",
-            "bet_type":    "Bet Type",
-            "bet_amount":  "Bet Amount",
-        })
-        # <<< HERE: cast Bet Amount to float
-        df["Bet Amount"] = pd.to_numeric(df["Bet Amount"], errors="coerce").fillna(0.0)
-    else:
-        df = pd.DataFrame(columns=["id", "Bettor Name", "Betting On", "Bet Type", "Bet Amount"])
-
-    return df
-
-    # cast the DECIMAL column to float
-    df["Bet Amount"] = pd.to_numeric(df["Bet Amount"], errors="coerce")
+    # pull everything out
+    df = pd.read_sql_query(
+        """
+        SELECT
+          id,
+          bettor_name AS `Bettor Name`,
+          betting_on   AS `Betting On`,
+          bet_type     AS `Bet Type`,
+          bet_amount   AS `Bet Amount`
+        FROM bets
+        """,
+        conn
+    )
+    conn.close()
+    # ───── FIX #1 ──────────────────────────────────────────────────────────────
+    # ensure that "Bet Amount" is actually a float, never a str
+    df["Bet Amount"] = pd.to_numeric(df["Bet Amount"], errors="coerce").fillna(0.0)
+    # ────────────────────────────────────────────────────────────────────────────
     return df
 
 def insert_bet(bettor_name, betting_on, bet_type, bet_amount):
@@ -91,34 +84,18 @@ def delete_all_bets():
     conn.commit()
     conn.close()
 
-# Initialize database
+# Initialize DB once
 init_db()
 
 ########################################
-# Session State Setup: load bets from DB
+# Session State Setup: single load
 ########################################
-if "bets" not in st.session_state:
-    st.session_state["bets"] = load_bets_from_db()
-else:
-    # always refresh from DB on reload
-    st.session_state["bets"] = load_bets_from_db()
-    st.session_state["bets"]["Bet Amount"] = st.session_state["bets"]["Bet Amount"].astype(float)
+st.session_state["bets"] = load_bets_from_db()
 
 # Initialize other keys
 for key in ["current_user", "admin_logged_in", "wagering_closed", "finishing_order"]:
     if key not in st.session_state:
         st.session_state[key] = None if key in ["current_user", "finishing_order"] else False
-
-        # Initialize session‑state bets
-if "bets" not in st.session_state:
-    st.session_state["bets"] = load_bets_from_db()
-else:
-    st.session_state["bets"] = load_bets_from_db()
-
-# —> force Bet Amount to be numeric
-st.session_state["bets"]["Bet Amount"] = pd.to_numeric(
-    st.session_state["bets"]["Bet Amount"], errors="coerce"
-)
 
 ########################################
 # Title and User Identification
@@ -133,10 +110,7 @@ all_names = [
 ]
 
 user_choice = st.selectbox("Select Your Name:", all_names, index=0, key="user_select")
-if user_choice != "Select a name...":
-    st.session_state.current_user = user_choice
-else:
-    st.session_state.current_user = None
+st.session_state.current_user = user_choice if user_choice != "Select a name..." else None
 
 if st.session_state.current_user:
     st.write(f"**Current user:** {st.session_state.current_user}")
@@ -144,7 +118,7 @@ else:
     st.warning("Please select your name to place bets.")
 
 ########################################
-# Helper Functions: Each-Way Processing
+# Helper Functions: Each‑Way Processing
 ########################################
 def effective_contribution(bet_type, amount, pool_category):
     if bet_type == "Win":
@@ -158,30 +132,28 @@ def effective_contribution(bet_type, amount, pool_category):
 def eligible_for_pool(row, pool, finishing_order):
     if not finishing_order:
         return False
-    win_horse = finishing_order["winner"]
-    second_horse = finishing_order["second"]
-    third_horse = finishing_order["third"]
-    bt = row["Bet Type"]
-    outcome = row["Betting On"]
+    win_horse, second_horse, third_horse = (
+        finishing_order["winner"],
+        finishing_order["second"],
+        finishing_order["third"],
+    )
+    bt, outcome = row["Bet Type"], row["Betting On"]
     if pool == "win":
-        return (outcome == win_horse and bt == "Win")
+        return outcome == win_horse and bt == "Win"
     elif pool == "place":
         if outcome == win_horse:
             return bt in ["Win", "Place"]
-        elif outcome == second_horse:
+        if outcome == second_horse:
             return bt == "Place"
-        else:
-            return False
-    elif pool == "show":
+        return False
+    else:  # show
         if outcome == win_horse:
             return True
-        elif outcome == second_horse:
+        if outcome == second_horse:
             return bt in ["Win", "Place", "Show"]
-        elif outcome == third_horse:
+        if outcome == third_horse:
             return bt == "Show"
-        else:
-            return False
-    return False
+        return False
 
 ########################################
 # Admin Login (Sidebar)
@@ -190,30 +162,27 @@ ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "default_password")
 def admin_login():
     with st.sidebar:
         st.header("Admin Login")
-        admin_pw = st.text_input("Enter admin password", type="password", key="admin_pw")
-        if st.button("Login as Admin", key="login_admin"):
-            if admin_pw == ADMIN_PASSWORD:
+        pw = st.text_input("Enter admin password", type="password")
+        if st.button("Login as Admin"):
+            if pw == ADMIN_PASSWORD:
                 st.session_state.admin_logged_in = True
                 st.success("Logged in as admin.")
             else:
                 st.error("Incorrect password.")
+
 admin_login()
 if st.session_state.admin_logged_in:
-    if st.sidebar.button("Logout Admin", key="logout_button"):
+    if st.sidebar.button("Logout Admin"):
         st.session_state.admin_logged_in = False
         st.success("Logged out.")
 
 ########################################
 # Wagering Lock Toggle (Admin Only)
 ########################################
-if st.session_state.admin_logged_in:
-    if st.button("Toggle Wagering Lock", key="toggle_lock"):
-        st.session_state.wagering_closed = not st.session_state.wagering_closed
+if st.session_state.admin_logged_in and st.button("Toggle Wagering Lock"):
+    st.session_state.wagering_closed = not st.session_state.wagering_closed
 
-if st.session_state.wagering_closed:
-    st.warning("Betting is closed; no new bets accepted.")
-else:
-    st.info("Wagering is OPEN.")
+st.warning("Betting is closed; no new bets accepted.") if st.session_state.wagering_closed else st.info("Wagering is OPEN.")
 
 ########################################
 # Admin View: All Wagers
@@ -222,54 +191,60 @@ if st.session_state.admin_logged_in:
     st.subheader("All Wagers (Admin View)")
     st.dataframe(st.session_state.bets)
 
-# Refresh button
-if st.button("Refresh Bets"):
-    st.session_state.bets = load_bets_from_db()
-    st.write("Bets currently in DB:", st.session_state.bets)
+    if st.button("Refresh Bets"):
+        st.session_state.bets = load_bets_from_db()
+        st.success("Refreshed.")
 
-########################################
-# Admin: Delete Bets
-########################################
-if st.session_state.admin_logged_in:
-    st.subheader("Admin: Manage Bets (Delete)")
+    st.subheader("Admin: Delete Bets")
     if not st.session_state.bets.empty:
         bet_ids = st.session_state.bets["id"].tolist()
-        idx_to_delete = st.multiselect("Select wager IDs to delete", bet_ids)
-        if st.button("Delete Selected Bets", key="delete_wagers"):
-            if idx_to_delete:
-                delete_bets(idx_to_delete)
-                st.session_state.bets = load_bets_from_db()
-                st.success("Wagers deleted.")
-            else:
-                st.error("No wagers selected.")
+        to_del = st.multiselect("Select wager IDs to delete", bet_ids)
+        if st.button("Delete Selected Bets"):
+            delete_bets(to_del)
+            st.session_state.bets = load_bets_from_db()
+            st.success("Deleted.")
     else:
         st.info("No wagers to delete.")
 
     st.markdown("---")
     st.subheader("Admin: Delete All Bets")
-    if st.button("Delete ALL Bets", key="delete_all"):
+    if st.button("Delete ALL Bets"):
         delete_all_bets()
         st.session_state.bets = load_bets_from_db()
-        st.success("All bets have been wiped from the database.")
+        st.success("All wiped.")
 
 ########################################
 # Public Bet Form
 ########################################
-if (not st.session_state.wagering_closed) and st.session_state.current_user:
-    st.subheader("Place a Bet")
+if not st.session_state.wagering_closed and st.session_state.current_user:
     with st.form("bet_form", clear_on_submit=True):
         st.write(f"**Bettor Name:** {st.session_state.current_user}")
-        horse = st.selectbox("Betting On", all_names[1:], key="betting_on")
-        btype = st.selectbox("Bet Type", ["Win", "Place", "Show"], key="bet_type")
-        amt = st.number_input("Bet Amount ($)", min_value=1.0, step=1.0, key="bet_amount")
-        submitted = st.form_submit_button("Submit Bet")
-        if submitted:
+        horse = st.selectbox("Betting On", all_names[1:])
+        btype = st.selectbox("Bet Type", ["Win", "Place", "Show"])
+        amt   = st.number_input("Bet Amount ($)", min_value=1.0, step=1.0)
+        if st.form_submit_button("Submit Bet"):
             insert_bet(st.session_state.current_user, horse, btype, amt)
             st.session_state.bets = load_bets_from_db()
-            st.success(f"Bet placed: {st.session_state.current_user} bet ${amt} on {horse} ({btype})")
+            st.success(f"{st.session_state.current_user} bet ${amt} on {horse} ({btype})")
 else:
-    st.error("No name selected or wagering is locked; no new bets accepted.")
+    if not st.session_state.current_user:
+        st.error("Select your name first.")
+    else:
+        st.error("Wagering is currently locked.")
 
+########################################
+# Pool Calculations & Detailed Summary
+########################################
+if not st.session_state.bets.empty:
+    st.header("Total Pool Size")
+    total_pool  = st.session_state.bets["Bet Amount"].sum()
+    total_win = st.session_state.bets.query("`Bet Type`=='Win'")["Bet Amount"].sum()
+    total_place = st.session_state.bets.query("`Bet Type`=='Place'")["Bet Amount"].sum()
+    total_show  = st.session_state.bets.query("`Bet Type`=='Show'")["Bet Amount"].sum()
+    st.write(f"**Total Pool:** ${total_pool:.2f}")
+    st.write(f"**Win Pool:** ${total_win:.2f}")
+    st.write(f"**Place Pool:** ${total_place:.2f}")
+    st.write(f"**Show Pool:** ${total_show:.2f}")
 
 ########################################
 # Pool Calculations & Detailed Summary
