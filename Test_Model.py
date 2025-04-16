@@ -112,7 +112,6 @@ st.session_state.current_user = user_choice if user_choice != "Select a name..."
 
 if st.session_state.current_user:
     st.write(f"**Current user:** {st.session_state.current_user}")
-else:
     st.warning("Please select your name to place bets.")
 
 ########################################
@@ -266,58 +265,58 @@ if not st.session_state.bets.empty:
 
     st.header("Detailed Wager Summary")
     
-    def create_summary():
-        summary = st.session_state.bets.pivot_table(
-            index="Betting On",
-            columns="Bet Type",
-            values="Bet Amount",
-            aggfunc="sum",
-            fill_value=0
-        ).reset_index()
-        summary.columns.name = None
-        if "Win" in summary.columns:
-            summary.rename(columns={"Win": "Total Bet Win"}, inplace=True)
-        else:
-            summary["Total Bet Win"] = 0
-        if "Place" in summary.columns:
-            summary.rename(columns={"Place": "Total Bet Place"}, inplace=True)
-        else:
-            summary["Total Bet Place"] = 0
-        if "Show" in summary.columns:
-            summary.rename(columns={"Show": "Total Bet Show"}, inplace=True)
-        else:
-            summary["Total Bet Show"] = 0
-        summary["Payout Ratio Win"] = summary["Total Bet Win"].apply(lambda x: (total_win / x) if x > 0 else 0)
-        summary["Payout Ratio Place"] = summary["Total Bet Place"].apply(lambda x: (total_place / x) if x > 0 else 0)
-        summary["Payout Ratio Show"] = summary["Total Bet Show"].apply(lambda x: (total_show / x) if x > 0 else 0)
-        cols = ["Betting On", "Total Bet Win", "Total Bet Place", "Total Bet Show",
-                "Payout Ratio Win", "Payout Ratio Place", "Payout Ratio Show"]
-        summary = summary[cols]
-        return summary
+def create_summary(df):
+    summary = df.pivot_table(
+        index="Betting On",
+        columns="Bet Type",
+        values="Bet Amount",
+        aggfunc="sum",
+        fill_value=0
+    ).reset_index()
+    summary.columns.name = None
+    if "Win" in summary.columns:
+        summary.rename(columns={"Win": "Total Bet Win"}, inplace=True)
+    else:
+        summary["Total Bet Win"] = 0
+    if "Place" in summary.columns:
+        summary.rename(columns={"Place": "Total Bet Place"}, inplace=True)
+    else:
+        summary["Total Bet Place"] = 0
+    if "Show" in summary.columns:
+        summary.rename(columns={"Show": "Total Bet Show"}, inplace=True)
+    else:
+        summary["Total Bet Show"] = 0
+    summary["Payout Ratio Win"] = summary["Total Bet Win"].apply(lambda x: (total_win / x) if x > 0 else 0)
+    summary["Payout Ratio Place"] = summary["Total Bet Place"].apply(lambda x: (total_place / x) if x > 0 else 0)
+    summary["Payout Ratio Show"] = summary["Total Bet Show"].apply(lambda x: (total_show / x) if x > 0 else 0)
+    cols = ["Betting On", "Total Bet Win", "Total Bet Place", "Total Bet Show",
+            "Payout Ratio Win", "Payout Ratio Place", "Payout Ratio Show"]
+    summary = summary[cols]
+    return summary
     
-    summary_df = create_summary()
-    st.dataframe(summary_df)
+summary_df = create_summary(df)
+st.dataframe(summary_df)
     
     ########################################
     # Finishing Order & Final Payout Calculation
     ########################################
-    finishing_opts = [
+finishing_opts = [
         "Anthony Sousa", "Connor Donovan", "Chris Brown", "Jared Joaquin",
         "Jim Alexander", "Joe Canavan", "Mark Leonard", "Pete Koskores",
         "Pete Sullivan", "Ryan Barcome", "Kunal Kanjolia", "Mike Leonard"
     ]
-    if st.session_state.admin_logged_in:
+if st.session_state.admin_logged_in:
         st.header("Enter Finishing Order (Admin Only)")
         finish_order = {}
         finish_order["winner"] = st.selectbox("Winner (1st)", finishing_opts, key="winner_select")
         finish_order["second"] = st.selectbox("2nd Place", finishing_opts, key="second_select")
         finish_order["third"] = st.selectbox("3rd Place", finishing_opts, key="third_select")
         st.session_state.finishing_order = finish_order
-    else:
+else:
         st.info("Only admins can adjust finishing order.")
         finish_order = st.session_state.finishing_order
     
-    if finish_order:
+if finish_order:
         winner = finish_order["winner"]
         second = finish_order["second"]
         third = finish_order["third"]
@@ -391,7 +390,7 @@ if not st.session_state.bets.empty:
         st.write(f"**Total Wagered:** ${total_pool:.2f}")
         tot_paid = final_df["Final Payout"].sum()
         st.write(f"**Total Paid Out:** ${tot_paid:.2f}")
-    else:
-        st.write("No finishing order set by the admin.")
+
 else:
-    st.write("No bets placed yet.")
+        st.write("No finishing order set by the admin.")
+        st.write("No bets placed yet.")
