@@ -95,8 +95,9 @@ init_db()
 ########################################
 # Session State Setup: single load
 ########################################
-# Always load the latest bets from the database into session state
-st.session_state["bets"] = load_bets_from_db()
+# Only load from the DB if we haven't already in this session
+if "bets" not in st.session_state:
+    st.session_state["bets"] = load_bets_from_db()
 
 # Initialize other keys
 for key in ["current_user", "admin_logged_in", "wagering_closed", "finishing_order"]:
@@ -235,7 +236,8 @@ if not st.session_state.wagering_closed and st.session_state.current_user:
         if st.form_submit_button("Submit Bet"):
             insert_bet(st.session_state.current_user, horse, btype, amt)
             st.session_state["bets"] = load_bets_from_db()
-            st.success(f"Bet placed: {st.session_state.current_user} bet ${amt} on {horse} ({btype})")
+            st.experimental_rerun()
+            st.success(f"{st.session_state.current_user} bet ${amt} on {horse} ({btype})")
 else:
     if not st.session_state.current_user:
         st.error("Select your name first.")
@@ -247,10 +249,10 @@ else:
 ########################################
 if not st.session_state.bets.empty:
     st.header("Total Pool Size")
-    total_pool  = float(st.session_state.bets["Bet Amount"].sum())
-    total_win   = float(st.session_state.bets.query("`Bet Type`=='Win'")["Bet Amount"].sum())
-    total_place = float(st.session_state.bets.query("`Bet Type`=='Place'")["Bet Amount"].sum())
-    total_show  = float(st.session_state.bets.query("`Bet Type`=='Show'")["Bet Amount"].sum())
+    total_pool  = st.session_state.bets["Bet Amount"].sum()
+    total_win   = st.session_state.bets.query("`Bet Type`=='Win'")["Bet Amount"].sum()
+    total_place = st.session_state.bets.query("`Bet Type`=='Place'")["Bet Amount"].sum()
+    total_show  = st.session_state.bets.query("`Bet Type`=='Show'")["Bet Amount"].sum()
 
     st.write(f"**Total Pool:** ${total_pool:.2f}")
     st.write(f"**Win Pool:** ${total_win:.2f}")
