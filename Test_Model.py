@@ -60,10 +60,9 @@ def load_bets_from_db():
     # ───── FIX #1.5: drop any erroneous header row inserted as data ─────
     header_mask = (
         (df["Bettor Name"] == "Bettor Name") &
-        (df["Betting On"]   == "Betting On") &
+        (df["Betting On"] == "Betting On") &
         (df["Bet Type"]     == "Bet Type")
     )
-    df = df.loc[~header_mask].reset_index(drop=True)
     return df
 
 def insert_bet(bettor_name, betting_on, bet_type, bet_amount):
