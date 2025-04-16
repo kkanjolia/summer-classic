@@ -63,8 +63,6 @@ def load_bets_from_db():
         (df["Betting On"] == "Betting On") &
         (df["Bet Type"]     == "Bet Type")
     )
-    # ───── FIX #1.5 (drop any residual header row) ─────
-    df = df.loc[~header_mask]
     return df
 
 def insert_bet(bettor_name, betting_on, bet_type, bet_amount):
