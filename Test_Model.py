@@ -83,15 +83,6 @@ for key in ["current_user", "admin_logged_in", "wagering_closed", "finishing_ord
     if key not in st.session_state:
         st.session_state[key] = None if key in ["current_user", "finishing_order"] else False
 
-# Provide a way to download the current DB
-with open(DB_FILE, "rb") as f:
-    data = f.read()
-st.download_button(
-    label="Download bets.db",
-    data=data,
-    file_name="bets.db",
-    mime="application/x-sqlite3"
-)
 
 ########################################
 # Title and User Identification
@@ -239,6 +230,16 @@ if st.session_state.admin_logged_in:
         delete_all_bets()
         st.session_state.bets = load_bets_from_db()
         st.success("All bets have been wiped from the database.")
+
+# Provide a way to download the current DB
+with open(DB_FILE, "rb") as f:
+    data = f.read()
+st.download_button(
+    label="Download bets.db",
+    data=data,
+    file_name="bets.db",
+    mime="application/x-sqlite3")
+
 
 ########################################
 # Public Bet Form
