@@ -230,15 +230,14 @@ if st.session_state.admin_logged_in:
 if not st.session_state.wagering_closed and st.session_state.current_user:
     with st.form("bet_form", clear_on_submit=True):
         st.write(f"**Bettor Name:** {st.session_state.current_user}")
-        horse = st.selectbox("Betting On", all_names[1:])
-        btype = st.selectbox("Bet Type", ["Win", "Place", "Show"])
-        amt   = st.number_input("Bet Amount ($)", min_value=1.0, step=1.0)
-        if st.form_submit_button("Submit Bet"):
+        horse = st.selectbox("Betting On", all_names[1:], key="betting_on")
+        btype = st.selectbox("Bet Type", ["Win", "Place", "Show"], key="bet_type")
+        amt   = st.number_input("Bet Amount ($)", min_value=1.0, step=1.0, key="bet_amount")
+        submitted = st.form_submit_button("Submit Bet")
+        if submitted:
             insert_bet(st.session_state.current_user, horse, btype, amt)
-            st.session_state["bets"] = load_bets_from_db()
-            st.success(f"{st.session_state.current_user} bet ${amt} on {horse} ({btype})")
-            # Force a rerun so newly inserted bets appear in tables
-            st.experimental_rerun()
+            st.session_state.bets = load_bets_from_db()
+            st.success(f"{st.session_state.current_user} bet ${amt:.2f} on {horse} ({btype})")
 else:
     if not st.session_state.current_user:
         st.error("Select your name first.")
