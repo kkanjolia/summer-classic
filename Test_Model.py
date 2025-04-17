@@ -3,6 +3,8 @@ import pandas as pd
 import pymysql
 import os
 from datetime import datetime, timezone
+from sqlalchemy import create_engine
+engine = create_engine("mysql+pymysql://sql5773659:3q2JtXGhXL@sql5.freesqldatabase.com:3306/sql5773659")
 
 ########################################
 # MySQL Persistence Setup
@@ -39,7 +41,6 @@ def init_db():
     conn.close()
 
 def load_bets_from_db():
-    conn = get_connection()
     df = pd.read_sql_query(
         """
         SELECT
@@ -50,9 +51,8 @@ def load_bets_from_db():
           bet_amount     AS `Bet Amount`
         FROM bets
         """,
-        conn
+        engine
     )
-    conn.close()
 
     # Drop any row where the DB just echoed your CSV header back as data:
     df = df[df["Bettor Name"]   != "Bettor Name"]
