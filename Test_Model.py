@@ -391,8 +391,8 @@ if not st.session_state.bets.empty:
         st.header("Individual Payouts (Final)")
         st.dataframe(final_df[[
             "Bettor Name","Betting On","Bet Type","Bet Amount",
-            "win_payout_raw","place_payout_raw","show_payout_raw",
-            "win_payout_extra","place_payout_extra","show_payout_extra",
+            "win_raw","place_raw","show_raw",
+            "win_extra","place_extra","show_extra",
             "Final Payout"
         ]])
         st.write(f"**Total Wagered:** ${total_pool:.2f}")
