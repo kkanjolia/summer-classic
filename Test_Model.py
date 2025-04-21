@@ -357,6 +357,14 @@ if not st.session_state.bets.empty:
 
         # Compute each pool’s payouts (raw, extra, final)
         def pool_payout(df, pool, pool_total, mask, contrib):
+            # Handle no winners: refund full bet amounts for this pool
+            if not mask.any():
+                refund_mask = df["Bet Type"] == pool.capitalize()
+                df[f"{pool}_raw"] = df["Bet Amount"].where(refund_mask, 0)
+                df[f"{pool}_extra"] = 0
+                df[f"{pool}_final"] = df[f"{pool}_raw"]
+                return df
+
             df[f"{pool}_raw"] = df.apply(
                 lambda r: r[contrib] * {"win": raw_win_ratio, "place": raw_place_ratio, "show": raw_show_ratio}[pool]
                 if mask.loc[r.name] else 0,
