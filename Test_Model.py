@@ -380,9 +380,9 @@ if not st.session_state.bets.empty:
                 df[f"{pool}_final"] *= (pool_total / s)
             return df
 
-        df = pool_payout(df, "win",   total_win,   win_mask,   "Win Contrib")
-        df = pool_payout(df, "place", total_place, place_mask, "Place Contrib")
-        df = pool_payout(df, "show",  total_show,  show_mask,  "Show Contrib")
+        df = compute_pool_payout_adjusted(df, "win",   tw_eff,   finish_order)
+        df = compute_pool_payout_adjusted(df, "place", tp_eff, finish_order)
+        df = compute_pool_payout_adjusted(df, "show",  ts_eff,  finish_order)
 
         # Final aggregation & display
         df["Final Payout"] = df["win_final"] + df["place_final"] + df["show_final"]
