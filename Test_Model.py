@@ -382,9 +382,10 @@ if not st.session_state.bets.empty:
                 df[f"{pool}_final"] *= (pool_total / s)
             return df
 
-        df = pool_payout(df, "win",   total_win,   win_mask,   "Win Contrib")
-        df = pool_payout(df, "place", total_place, place_mask, "Place Contrib")
-        df = pool_payout(df, "show",  total_show,  show_mask,  "Show Contrib")
+        # Replace compute_pool_payout_adjusted calls with pool_payout
+        df = pool_payout(df, "win", total_win, win_mask, "Win Coefficient")
+        df = pool_payout(df, "place", total_place, place_mask, "Place Coefficient")
+        df = pool_payout(df, "show", total_show, show_mask, "Show Coefficient")
 
         # Final aggregation & display
         df["Final Payout"] = df["win_final"] + df["place_final"] + df["show_final"]
@@ -397,10 +398,14 @@ if not st.session_state.bets.empty:
             "win_extra","place_extra","show_extra",
             "Final Payout"
         ]])
-        st.write(f"**Total Wagered:** ${total_pool:.2f}")
-        st.write(f"**Total Paid Out:** ${final_df['Final Payout'].sum():.2f}")
+        # Update formatting for totals
+        st.write(f"**Total Wagered:** ${float(total_pool):.2f}")
+        st.write(f"**Total Paid Out:** ${float(final_df['Final Payout'].sum()):.2f}")
 
     else:
         st.write("No finishing order set by the admin.")
 else:
     st.write("No bets placed yet.")
+
+# Remove or comment out st.experimental_rerun() if present to avoid attribute error
+# st.experimental_rerun()
