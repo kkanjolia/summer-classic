@@ -127,9 +127,12 @@ if st.session_state.current_user:
 # Helper Functions: Each‑Way Processing
 ########################################
 def effective_contribution(bet_type, amount, pool_category):
-    # Only include stakes in the pool they were placed
-    if bet_type == pool_category.capitalize():
-        return amount
+    if bet_type == "Win":
+        return amount / 3.0
+    elif bet_type == "Place":
+        return amount / 2.0 if pool_category in ["Place", "Show"] else 0
+    elif bet_type == "Show":
+        return amount if pool_category == "Show" else 0
     return 0
 
 def eligible_for_pool(row, pool, finishing_order):
@@ -259,6 +262,9 @@ if not st.session_state.bets.empty:
 
     # Compute effective contributions for each bet.
     df = st.session_state.bets.copy()
+    df["Win Contrib"]   = df.apply(lambda r: effective_contribution(r["Bet Type"], r["Bet Amount"], "Win"), axis=1)
+    df["Place Contrib"] = df.apply(lambda r: effective_contribution(r["Bet Type"], r["Bet Amount"], "Place"), axis=1)
+    df["Show Contrib"]  = df.apply(lambda r: effective_contribution(r["Bet Type"], r["Bet Amount"], "Show"), axis=1)
 
     tw_eff = df["Win Contrib"].sum()
     tp_eff = df["Place Contrib"].sum()
@@ -360,7 +366,7 @@ if not st.session_state.bets.empty:
                 return df
 
             df[f"{pool}_raw"] = df.apply(
-                lambda r: r["Bet Amount"] * {"win": raw_win_ratio, "place": raw_place_ratio, "show": raw_show_ratio}[pool]
+                lambda r: r[contrib] * {"win": raw_win_ratio, "place": raw_place_ratio, "show": raw_show_ratio}[pool]
                 if mask.loc[r.name] else 0,
                 axis=1
             )
@@ -382,10 +388,9 @@ if not st.session_state.bets.empty:
                 df[f"{pool}_final"] *= (pool_total / s)
             return df
 
-        # Replace compute_pool_payout_adjusted calls with pool_payout
-        df = pool_payout(df, "win", total_win, win_mask, "Win Coefficient")
-        df = pool_payout(df, "place", total_place, place_mask, "Place Coefficient")
-        df = pool_payout(df, "show", total_show, show_mask, "Show Coefficient")
+        df = pool_payout(df, "win",   total_win,   win_mask,   "Win Contrib")
+        df = pool_payout(df, "place", total_place, place_mask, "Place Contrib")
+        df = pool_payout(df, "show",  total_show,  show_mask,  "Show Contrib")
 
         # Final aggregation & display
         df["Final Payout"] = df["win_final"] + df["place_final"] + df["show_final"]
@@ -398,14 +403,10 @@ if not st.session_state.bets.empty:
             "win_extra","place_extra","show_extra",
             "Final Payout"
         ]])
-        # Update formatting for totals
-        st.write(f"**Total Wagered:** ${float(total_pool):.2f}")
-        st.write(f"**Total Paid Out:** ${float(final_df['Final Payout'].sum()):.2f}")
+        st.write(f"**Total Wagered:** ${total_pool:.2f}")
+        st.write(f"**Total Paid Out:** ${final_df['Final Payout'].sum():.2f}")
 
     else:
         st.write("No finishing order set by the admin.")
 else:
     st.write("No bets placed yet.")
-
-# Remove or comment out st.experimental_rerun() if present to avoid attribute error
-# st.experimental_rerun()
