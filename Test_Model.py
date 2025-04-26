@@ -127,12 +127,9 @@ if st.session_state.current_user:
 # Helper Functions: Each‑Way Processing
 ########################################
 def effective_contribution(bet_type, amount, pool_category):
-    if bet_type == "Win":
-        return amount / 3.0
-    elif bet_type == "Place":
-        return amount / 2.0 if pool_category in ["Place", "Show"] else 0
-    elif bet_type == "Show":
-        return amount if pool_category == "Show" else 0
+    # Only include stakes in the pool they were placed
+    if bet_type == pool_category.capitalize():
+        return amount
     return 0
 
 def eligible_for_pool(row, pool, finishing_order):
@@ -262,9 +259,6 @@ if not st.session_state.bets.empty:
 
     # Compute effective contributions for each bet.
     df = st.session_state.bets.copy()
-    df["Win Contrib"]   = df.apply(lambda r: effective_contribution(r["Bet Type"], r["Bet Amount"], "Win"), axis=1)
-    df["Place Contrib"] = df.apply(lambda r: effective_contribution(r["Bet Type"], r["Bet Amount"], "Place"), axis=1)
-    df["Show Contrib"]  = df.apply(lambda r: effective_contribution(r["Bet Type"], r["Bet Amount"], "Show"), axis=1)
 
     tw_eff = df["Win Contrib"].sum()
     tp_eff = df["Place Contrib"].sum()
@@ -366,7 +360,7 @@ if not st.session_state.bets.empty:
                 return df
 
             df[f"{pool}_raw"] = df.apply(
-                lambda r: r[contrib] * {"win": raw_win_ratio, "place": raw_place_ratio, "show": raw_show_ratio}[pool]
+                lambda r: r["Bet Amount"] * {"win": raw_win_ratio, "place": raw_place_ratio, "show": raw_show_ratio}[pool]
                 if mask.loc[r.name] else 0,
                 axis=1
             )
